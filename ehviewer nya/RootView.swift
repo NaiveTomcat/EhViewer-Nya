@@ -341,6 +341,7 @@ struct RootView: View {
 
             let config = URLSessionConfiguration.default
             config.httpCookieStorage = .shared
+            EhProxy.apply(to: config)
             let exSession = URLSession(configuration: config)
             let (data, response) = try await exSession.data(for: request)
 

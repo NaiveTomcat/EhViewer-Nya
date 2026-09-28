@@ -23,6 +23,9 @@ struct SettingsView: View {
     @State private var vm = SettingsViewModel()
     @Environment(\.openURL) private var openURL
 
+    /// 代理地址/端口的输入防抖任务：停手后再应用一次
+    @State private var proxyApplyTask: Task<Void, Never>?
+
     /// 被推入父导航栈时，不创建自己的 NavigationStack，避免嵌套
     private var isPushed: Bool = false
 
@@ -437,6 +440,37 @@ struct SettingsView: View {
 
     // MARK: - Network
 
+    /// 落盘后的收尾：重建网络会话 + 提示。
+    ///
+    /// 没有「应用」按钮，改完按回车即走这里。`URLSessionConfiguration`
+    /// 在会话创建时就被拷贝，不重建的话新代理要重启 App 才生效。
+    private func applyProxySettings() {
+        Task { await EhAPI.shared.applyProxySettings() }
+        EhToast.success(AppSettings.shared.manualProxyIsUsable
+                        ? "已切换到 \(AppSettings.shared.proxyHost):\(AppSettings.shared.proxyPort)"
+                        : "地址或端口不完整，仍按跟随系统处理")
+    }
+
+    /// 输入停手后自动应用一次，避免每敲一个字符就重建会话，
+    /// 也避免用户改了值却忘了按回车 —— 那样代理要重启才生效。
+    private func scheduleProxyApply() {
+        proxyApplyTask?.cancel()
+        proxyApplyTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            applyProxySettings()
+        }
+    }
+
+    /// 说明文字末尾的应用方式提示：macOS 靠回车/自动应用，iOS 另有按钮
+    private var proxyApplyHint: String {
+        #if os(macOS)
+        "改完自动生效，按回车立即应用。"
+        #else
+        ""
+        #endif
+    }
+
     private var networkSection: some View {
         Section("网络") {
             // App 内代理 (对齐 Android advanced_settings.xml 的 ProxyPreference)。
@@ -448,32 +482,37 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
 
             if vm.proxyMode == 1 {
-                HStack {
-                    Text("地址")
-                    TextField("127.0.0.1", text: $vm.proxyHost)
-                        .multilineTextAlignment(.trailing)
-                        .autocorrectionDisabled()
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        #endif
-                }
-                HStack {
-                    Text("端口")
-                    TextField("7890", value: $vm.proxyPort, format: .number.grouping(.never))
-                        .multilineTextAlignment(.trailing)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
-                }
-                Button("应用代理设置") {
-                    Task { await EhAPI.shared.applyProxySettings() }
-                    EhToast.success(AppSettings.shared.manualProxyIsUsable
-                                    ? "已切换到 \(AppSettings.shared.proxyHost):\(AppSettings.shared.proxyPort)"
-                                    : "地址或端口不完整，仍按跟随系统处理")
-                }
+                // 标签交给 Form 渲染（左「地址」右输入框），提示走 prompt。
+                // 把占位串当标题传会给 macOS 画出一个多余的左侧标签。
+                TextField("地址", text: $vm.proxyHost, prompt: Text("127.0.0.1"))
+                    .multilineTextAlignment(.trailing)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #else
+                    // macOS：改完回车即应用，不再点按钮
+                    .onSubmit { applyProxySettings() }
+                    #endif
+                    // 停手自动应用：忘了回车也不会「要重启才生效」
+                    .onChange(of: vm.proxyHost) { _, _ in scheduleProxyApply() }
+
+                TextField("端口", text: $vm.proxyPortText, prompt: Text("7890"))
+                    .multilineTextAlignment(.trailing)
+                    #if os(iOS)
+                    .keyboardType(.numberPad)
+                    #else
+                    .onSubmit { applyProxySettings() }
+                    #endif
+                    .onChange(of: vm.proxyPortText) { _, _ in scheduleProxyApply() }
+
+                // iOS 数字键盘没有回车键，保留按钮兜底；macOS 用回车。
+                #if os(iOS)
+                Button("应用代理设置") { applyProxySettings() }
+                #endif
                 Text("只支持 HTTP/HTTPS 代理。URLSession 不支持 SOCKS，"
                      + "所以这里没有 SOCKS 选项——给一个点了没用的开关更糟。"
-                     + "地址或端口填不全时按「跟随系统」处理，不会把网络配死。")
+                     + "地址或端口填不全时按「跟随系统」处理，不会把网络配死。"
+                     + proxyApplyHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1591,8 +1630,10 @@ class SettingsViewModel {
     var proxyHost: String = "" {
         didSet { AppSettings.shared.proxyHost = proxyHost }
     }
-    var proxyPort: Int = 0 {
-        didSet { AppSettings.shared.proxyPort = proxyPort }
+    /// 端口用字符串承载：Int 未配置时是 0，TextField 会把它显示成「0」，
+    /// 只有空串才能让 prompt（7890）正常显示。
+    var proxyPortText: String = "" {
+        didSet { AppSettings.shared.proxyPort = Int(proxyPortText) ?? 0 }
     }
 
     var domainFronting: Bool = false {
@@ -1691,7 +1732,8 @@ class SettingsViewModel {
         showTagTranslations = AppSettings.shared.showTagTranslations
         proxyMode = AppSettings.shared.proxyMode
         proxyHost = AppSettings.shared.proxyHost
-        proxyPort = AppSettings.shared.proxyPort
+        proxyPortText = AppSettings.shared.proxyPort > 0
+            ? String(AppSettings.shared.proxyPort) : ""
         domainFronting = AppSettings.shared.domainFronting
         dnsOverHttps = AppSettings.shared.dnsOverHttps
         builtInHosts = AppSettings.shared.builtInHosts
@@ -2197,7 +2239,8 @@ class SettingsViewModel {
         showTagTranslations = AppSettings.shared.showTagTranslations
         proxyMode = AppSettings.shared.proxyMode
         proxyHost = AppSettings.shared.proxyHost
-        proxyPort = AppSettings.shared.proxyPort
+        proxyPortText = AppSettings.shared.proxyPort > 0
+            ? String(AppSettings.shared.proxyPort) : ""
         domainFronting = AppSettings.shared.domainFronting
         dnsOverHttps = AppSettings.shared.dnsOverHttps
         builtInHosts = AppSettings.shared.builtInHosts

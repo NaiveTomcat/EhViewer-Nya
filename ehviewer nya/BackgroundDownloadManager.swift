@@ -8,6 +8,7 @@
 import Foundation
 import BackgroundTasks
 import EhDownload
+import EhSettings
 
 /// 后台下载管理器
 /// 负责在 App 进入后台或被挂起时继续下载
@@ -22,6 +23,8 @@ final class BackgroundDownloadManager: NSObject, @unchecked Sendable {
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        // 后台会话只在首次用到时创建一次，创建时取当前代理
+        EhProxy.apply(to: config)
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 

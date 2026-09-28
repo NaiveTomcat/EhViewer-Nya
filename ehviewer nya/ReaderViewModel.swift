@@ -279,16 +279,17 @@ class ReaderViewModel {
         #endif
     }
 
-    /// 共享 URLSession (保持 cookies)
-    private static let session: URLSession = {
+    /// 共享 URLSession (保持 cookies)。走 ProxyAwareSession，代理变化时重建。
+    private static let sessionProvider = ProxyAwareSession {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = .shared
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 120
         config.waitsForConnectivity = true
         config.httpMaximumConnectionsPerHost = 6
+        EhProxy.apply(to: config)
         return URLSession(configuration: config)
-    }()
+    }
 
     private static let pTokenUrlPattern = try! NSRegularExpression(
         pattern: #"/s/([0-9a-f]+)/(\d+)-(\d+)"#
@@ -627,7 +628,7 @@ class ReaderViewModel {
                              forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 15
 
-            let (data, _) = try await Self.session.data(for: request)
+            let (data, _) = try await Self.sessionProvider.session.data(for: request)
             let html = String(data: data, encoding: .utf8) ?? ""
 
             if let match = Self.pagesPattern.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
@@ -807,7 +808,7 @@ class ReaderViewModel {
                 // ⚠️ download(for:delegate:) 的 async 包装不转发 URLSessionDownloadDelegate 的
                 //    didWriteData 回调，导致进度始终为 0 → 直接跳到 100%
                 // bytes(for:) 虽逐字节迭代，但配合 16KB 缓冲区按 chunk 更新进度，开销可控
-                let (asyncBytes, response) = try await Self.session.bytes(for: request)
+                let (asyncBytes, response) = try await Self.sessionProvider.session.bytes(for: request)
                 let expectedLength = response.expectedContentLength > 0
                     ? response.expectedContentLength
                     : Int64(2_000_000) // 估算 ~2MB

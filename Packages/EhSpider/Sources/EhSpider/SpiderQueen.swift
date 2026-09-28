@@ -43,6 +43,8 @@ public actor SpiderQueen {
         let timeout = TimeInterval(AppSettings.shared.downloadTimeout)
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = timeout * 4
+        // 跟随 App 内手动代理。实例是每次下载新建的，创建时取值即可。
+        EhProxy.apply(to: config)
         return URLSession(configuration: config)
     }()
 

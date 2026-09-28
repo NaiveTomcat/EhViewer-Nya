@@ -17,8 +17,11 @@ import UIKit
 #endif
 
 /// 共享 URLSession — 避免每次 load() 创建新 session (连接池/DNS 复用显著提速)
+///
+/// 用 `ProxyAwareSession` 持有而不是裸 `static let`：代理设置变了要能就地重建，
+/// 否则缩略图一直走旧代理（或直连），得重启 App 才换过来。
 private enum ImageSessionProvider {
-    static let shared: URLSession = {
+    static let shared = ProxyAwareSession {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = .shared
         config.timeoutIntervalForRequest = 30
@@ -31,8 +34,10 @@ private enum ImageSessionProvider {
         config.httpAdditionalHeaders = [
             "User-Agent": EhRequestBuilder.userAgent
         ]
+        // 跟随 App 内手动代理
+        EhProxy.apply(to: config)
         return URLSession(configuration: config)
-    }()
+    }
 }
 
 /// 内存图片缓存 — 避免重复解码已下载的图片
@@ -232,7 +237,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             do {
                 var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy)
                 request.setValue(referer, forHTTPHeaderField: "Referer")
-                let (data, response) = try await ImageSessionProvider.shared.data(for: request)
+                let (data, response) = try await ImageSessionProvider.shared.session.data(for: request)
 
                 // 验证 HTTP 状态码
                 if let httpResponse = response as? HTTPURLResponse,

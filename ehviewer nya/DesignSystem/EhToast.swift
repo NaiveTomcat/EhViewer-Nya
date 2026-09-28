@@ -30,6 +30,25 @@ final class EhToastCenter {
     private var seq = 0
     private var dismissTask: Task<Void, Never>?
 
+    // MARK: - 提示层叠放
+
+    /// 提示层（host）的注册次序。根视图和 sheet 各挂一个 host，
+    /// 两个都画就会「同一条提示弹两次」。只让最后注册的那个（最上层）渲染。
+    private var hostOrder: [UUID] = []
+
+    /// 当前负责渲染的 host —— 叠在最上面的那个
+    private(set) var topHostId: UUID?
+
+    func registerHost(_ id: UUID) {
+        if !hostOrder.contains(id) { hostOrder.append(id) }
+        topHostId = hostOrder.last
+    }
+
+    func unregisterHost(_ id: UUID) {
+        hostOrder.removeAll { $0 == id }
+        topHostId = hostOrder.last
+    }
+
     private init() {}
 
     func show(_ text: String, kind: Toast.Kind = .info) {
@@ -68,34 +87,46 @@ enum EhToast {
 }
 
 private struct EhToastHost: ViewModifier {
+    /// 距底部的边距。根视图上要让开浮起导航条；弹层（sheet）里没有导航条，
+    /// 用小值即可，否则提示会浮到半空中。
+    var bottomInset: CGFloat
+
     @State private var center = EhToastCenter.shared
+    @State private var hostId = UUID()
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
-            if let toast = center.current {
-                HStack(spacing: 8) {
-                    if let symbol = symbol(for: toast.kind) {
-                        Image(systemName: symbol)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(tint(for: toast.kind))
-                    }
-                    Text(toast.text)
-                        .font(EhFont.caption)
-                        .foregroundStyle(EhColor.label)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .ehGlass(cornerRadius: 22)
-                .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
-                // 让开浮起导航条，否则提示正好压在「下载」「收藏」两个图标上
-                .padding(.bottom, EhSize.tabBarHeight + EhSize.tabBarBottomInset + 14)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .onTapGesture { center.dismiss() }
-                .allowsHitTesting(true)
+            // 只让最上层的 host 渲染：根视图与 sheet 各挂一个，
+            // 都画的话同一条提示会在两处各弹一次。
+            if center.topHostId == hostId, let toast = center.current {
+                toastView(toast)
             }
         }
         // 提示是纯反馈，不该拦住下面的列表
         .animation(.spring(response: 0.32, dampingFraction: 0.85), value: center.current)
+        .onAppear { center.registerHost(hostId) }
+        .onDisappear { center.unregisterHost(hostId) }
+    }
+
+    private func toastView(_ toast: EhToastCenter.Toast) -> some View {
+        HStack(spacing: 8) {
+            if let symbol = symbol(for: toast.kind) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint(for: toast.kind))
+            }
+            Text(toast.text)
+                .font(EhFont.caption)
+                .foregroundStyle(EhColor.label)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .ehGlass(cornerRadius: 22)
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
+        .padding(.bottom, bottomInset)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .onTapGesture { center.dismiss() }
+        .allowsHitTesting(true)
     }
 
     private func symbol(for kind: EhToastCenter.Toast.Kind) -> String? {
@@ -116,8 +147,13 @@ private struct EhToastHost: ViewModifier {
 }
 
 extension View {
-    /// 挂在根视图上，全 App 共用一个提示层
-    func ehToastHost() -> some View {
-        modifier(EhToastHost())
+    /// 挂在根视图上，全 App 共用一个提示层。
+    ///
+    /// sheet 是独立的呈现层，根视图上的提示层盖不住它 —— sheet 里若要弹提示，
+    /// 得在该 sheet 的内容上再挂一个（同一个 `EhToastCenter`，不会重复显示）。
+    func ehToastHost(
+        bottomInset: CGFloat = EhSize.tabBarHeight + EhSize.tabBarBottomInset + 14
+    ) -> some View {
+        modifier(EhToastHost(bottomInset: bottomInset))
     }
 }

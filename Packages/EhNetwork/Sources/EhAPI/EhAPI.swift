@@ -32,24 +32,6 @@ public actor EhAPI {
     /// 最大重试次数 (超时/连接错误时自动重试)
     private static let maxRetries = 1
 
-    /// 手动代理字典。没配置完整时返回 nil —— 让系统按自己的规则走。
-    ///
-    /// 只给 HTTP/HTTPS 两组键：URLSession 支持的就这些。
-    nonisolated static func manualProxyDictionary() -> [AnyHashable: Any]? {
-        let settings = AppSettings.shared
-        guard settings.manualProxyIsUsable else { return nil }
-        let host = settings.proxyHost
-        let port = settings.proxyPort
-        return [
-            kCFNetworkProxiesHTTPEnable as String: 1,
-            kCFNetworkProxiesHTTPProxy as String: host,
-            kCFNetworkProxiesHTTPPort as String: port,
-            "HTTPSEnable": 1,
-            "HTTPSProxy": host,
-            "HTTPSPort": port,
-        ]
-    }
-
     /// 代理设置改了之后重建会话。
     ///
     /// URLSessionConfiguration 是在创建会话时拷贝的，改设置不会影响已建好的
@@ -63,10 +45,13 @@ public actor EhAPI {
         // 那会把用户正在看的那一页也打断
         old.finishTasksAndInvalidate()
         oldImage.finishTasksAndInvalidate()
+        // 别的模块（缩略图 / 阅读器 / 下载）各自持有长生命周期 session，
+        // 靠这条通知让它们也重建，否则只有 API 请求走了新代理。
+        NotificationCenter.default.post(name: EhProxy.didChangeNotification, object: nil)
     }
 
     private func rebuildProxiedSessions() {
-        let proxy = Self.manualProxyDictionary()
+        let proxy = EhProxy.connectionProxyDictionary()
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
@@ -109,7 +94,7 @@ public actor EhAPI {
         // 手动代理（对齐 Android 的 proxy 设置）。没配就保持 nil，
         // 让系统按自己的规则走 VPN / 系统代理 —— 这正是原来那条
         // 「不设置 connectionProxyDictionary」注释想保住的行为。
-        config.connectionProxyDictionary = Self.manualProxyDictionary()
+        EhProxy.apply(to: config)
         // 不使用 waitsForConnectivity — 立即尝试，快速失败后交由域名前置回退
         session = URLSession(configuration: config)
 
@@ -120,7 +105,7 @@ public actor EhAPI {
         imgConfig.httpCookieStorage = .shared
         imgConfig.urlCache = sharedCache
         imgConfig.allowsCellularAccess = true
-        imgConfig.connectionProxyDictionary = Self.manualProxyDictionary()
+        EhProxy.apply(to: imgConfig)
         imageSession = URLSession(configuration: imgConfig, delegate: RedirectBlockDelegate(), delegateQueue: nil)
 
         // === 域名前置回退 Session (对应 Android OkHttp Dns 接口内置域名解析) ===
