@@ -97,6 +97,27 @@ open "ehviewer apple.xcodeproj"
 - 确保项目在 iOS 和 macOS 上都能编译通过
 - 如有 UI 变更，附上截图
 
+## ⚖️ 许可与授权
+
+本项目 fork 自 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple)，采用混合许可：
+
+- **继承自上游的文件**：仍为 [Apache License 2.0](LICENSE)。请勿移除其中的版权与许可声明。
+- **fork 之后新增的文件**：采用 [MIT](LICENSE-MIT)。
+
+### 贡献授权
+
+你提交的 Pull Request，其**新增文件**默认按 MIT 授权给本项目；对上游文件的修改部分，你同意其继续以 Apache-2.0 分发。若你的贡献需要其他授权方式，请在 PR 描述中明确说明。
+
+### 新增文件标识
+
+新建文件请在文件头加入 SPDX 标识：
+
+```swift
+// SPDX-License-Identifier: MIT
+```
+
+不要给继承自上游的文件加 MIT 标识，那会与 Apache-2.0 冲突。
+
 ## ❓ 有问题？
 
 - 开一个 [Discussion](https://github.com/felixchaos/EhViewer-Apple/discussions) 或 Issue

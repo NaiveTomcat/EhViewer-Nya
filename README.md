@@ -1,10 +1,10 @@
 # EhViewer-Apple
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.1-brightgreen" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-0.1.0-brightgreen" alt="Version"/>
   <img src="https://img.shields.io/badge/platform-iOS%2026.2%2B%20%7C%20macOS%2026%2B-blue" alt="Platform"/>
   <img src="https://img.shields.io/badge/swift-6.0-orange" alt="Swift 6.0"/>
-  <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
+  <img src="https://img.shields.io/badge/license-Apache--2.0%20AND%20MIT-green" alt="License"/>
 </p>
 
 用 SwiftUI 重写的 [E-Hentai](https://e-hentai.org) / [ExHentai](https://exhentai.org) 画廊客户端，支持 iPhone、iPad 和 Mac。
@@ -12,6 +12,12 @@
 功能与交互对齐 Android 端的 [EhViewer_CN_SXJ](https://github.com/xiaojieonly/Ehviewer_CN_SXJ)，网络层、解析器、下载引擎均为对照其实现重写，而非套壳。
 
 ---
+
+## 说在前面
+
+该仓库 fork 于上游 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple) 因为上游部分设计与我审美不符，该仓库主要修改界面设计，及部分可能的 bug 修复。
+
+该项目出于持续开发中，部分文档依旧引用了原始作者的链接，当前版本不对任何文档的表述负责。
 
 ## 安装
 
@@ -212,7 +218,7 @@ xcodebuild test -project "ehviewer apple.xcodeproj" -scheme "ehviewer apple" \
 - 文档见 [Wiki](../../wiki)：[安装与签名](../../wiki/Installation)、[路线图](../../wiki/Roadmap)、[架构说明](../../wiki/Architecture)
 - 更新记录见 [CHANGELOG.md](CHANGELOG.md)
 - 安全问题请勿开公开 issue，走[私密漏洞报告](../../security/advisories/new)，详见 [SECURITY.md](SECURITY.md)
-- 开源协议 [Apache License 2.0](LICENSE)
+- 开源协议：本项目 fork 自 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple)（Apache-2.0）。fork 之后新增的文件采用 [MIT](LICENSE-MIT)，继承自上游的文件仍为 [Apache License 2.0](LICENSE)。
 
 致谢 [EhViewer](https://github.com/Ehviewer-Overhauled/Ehviewer)、[EhViewer_CN_SXJ](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) 与 [GRDB.swift](https://github.com/groue/GRDB.swift)。
 
