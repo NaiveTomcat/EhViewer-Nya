@@ -54,11 +54,12 @@ struct SelectSiteView: View {
                     description: "内容更全，需要账号且账号需具备访问权限",
                     icon: "globe.badge.chevron.backward"
                 )
-            }
-            .padding(.horizontal, EhSpacing.page)
 
-            if selectedSite == .exHentai {
-                // 只在选了 ExHentai 时出现：这条提醒对选 E-Hentai 的人是噪音
+                // 紧跟在 ExHentai 选项下方，读作该选项的附属说明。
+                //
+                // 这里始终占位、只切换可见性，而不是按选择插入/移除：
+                // 插入会让上下两个 Spacer 重新分配空间，点一下站点整页跟着上下动。
+                // 代价是选 E-Hentai 时也留着这一行的空白，换来的是零重排。
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
@@ -68,9 +69,12 @@ struct SelectSiteView: View {
                         .foregroundStyle(EhColor.secondaryLabel)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, EhSpacing.page + 4)
-                .padding(.top, 14)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+                .opacity(selectedSite == .exHentai ? 1 : 0)
+                .accessibilityHidden(selectedSite != .exHentai)
             }
+            .padding(.horizontal, EhSpacing.page)
 
             Spacer(minLength: 24)
 

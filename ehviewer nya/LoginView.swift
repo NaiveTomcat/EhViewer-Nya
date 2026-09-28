@@ -65,6 +65,7 @@ struct LoginView: View {
 
     @State private var method: LoginMethod?
     @State private var showGuestConfirm = false
+    @State private var showProxySettings = false
 
     var body: some View {
         NavigationStack {
@@ -85,6 +86,24 @@ struct LoginView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
+            .toolbar {
+                // 登录页是第一个要联网的地方，被墙时得先能配代理再谈登录。
+                // 仅 macOS：iOS 端走系统 VPN/代理就够了，不额外给入口。
+                #if os(macOS)
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            showProxySettings = true
+                        } label: {
+                            Label("配置代理服务", systemImage: "network")
+                        }
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .help("设置")
+                }
+                #endif
+            }
             .sheet(item: $method) { method in
                 switch method {
                 case .web:      WebViewLoginView().environment(appState)
@@ -103,6 +122,12 @@ struct LoginView: View {
                 Text("访客只能浏览 E-Hentai，无法使用收藏、下载配额与 ExHentai。随时可以在设置里登录。")
             }
         }
+        #if os(macOS)
+        // 挂在 NavigationStack 外层，避免和登录方式的 sheet(item:) 抢同一个视图
+        .sheet(isPresented: $showProxySettings) {
+            ProxySettingsView()
+        }
+        #endif
     }
 
     // MARK: - 品牌区

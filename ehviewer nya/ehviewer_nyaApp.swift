@@ -101,7 +101,7 @@ struct EhViewerApp: App {
             RootView()
         }
         #if os(macOS)
-        .defaultSize(width: 1100, height: 750)
+        .defaultSize(width: 900, height: 600)
         .commands {
             SidebarCommands()
 
