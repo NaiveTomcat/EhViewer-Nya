@@ -128,6 +128,10 @@ struct MainTabView: View {
                         // 标签点击推入的画廊列表 (对齐 Android: onTagClick → GalleryListScene)
                         GalleryListView(mode: .tag(keyword: dest.tag), selection: $selectedGallery)
                     }
+                    .navigationDestination(for: GalleryQueryDestination.self) { dest in
+                        // 上传者等查询推入的画廊列表
+                        GalleryListView(mode: .search(dest.query), selection: $selectedGallery)
+                    }
             }
             .id(selectedTab)
             .navigationSplitViewColumnWidth(min: 350, ideal: 480)
@@ -142,6 +146,9 @@ struct MainTabView: View {
             }
             .environment(\.tagNavigationAction, TagNavigationAction { tag in
                 contentPath.append(TagSearchDestination(tag: tag))
+            })
+            .environment(\.searchNavigationAction, SearchNavigationAction { query in
+                contentPath.append(GalleryQueryDestination(query: query))
             })
         }
         .onChange(of: selectedTab) { _, newTab in

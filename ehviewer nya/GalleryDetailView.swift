@@ -35,6 +35,27 @@ extension EnvironmentValues {
     }
 }
 
+/// 通用查询导航目标（上传者搜索等）— 用于 NavigationStack 的 path
+struct GalleryQueryDestination: Hashable {
+    let query: SearchQuery
+}
+
+/// 查询导航动作 — 从 Detail 列传递到 Content/Sidebar 列的 NavigationStack
+struct SearchNavigationAction {
+    let navigate: (SearchQuery) -> Void
+}
+
+private struct SearchNavigationActionKey: EnvironmentKey {
+    static let defaultValue: SearchNavigationAction? = nil
+}
+
+extension EnvironmentValues {
+    var searchNavigationAction: SearchNavigationAction? {
+        get { self[SearchNavigationActionKey.self] }
+        set { self[SearchNavigationActionKey.self] = newValue }
+    }
+}
+
 struct GalleryDetailView: View {
     let gallery: GalleryInfo
 
@@ -51,6 +72,8 @@ struct GalleryDetailView: View {
 
     /// 标签点击导航动作 — 在 Split/三栏布局中将标签列表推入左侧栏
     @Environment(\.tagNavigationAction) private var tagNavigationAction
+    /// 上传者点击导航动作 — 同上，推入左侧栏
+    @Environment(\.searchNavigationAction) private var searchNavigationAction
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -250,7 +273,13 @@ struct GalleryDetailView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        HStack(alignment: .top, spacing: 14) {
+        // 上传者/发布日优先用详情请求的结果。列表行不一定带这两个字段
+        // （取决于列表版面/来源），而详情页一定解析得到——与下面 vm.size /
+        // vm.language 取自详情的做法保持一致，否则会出现「列表项没上传者
+        // 就整行不显示」的漏显。
+        let uploader = vm.detail?.info.uploader ?? gallery.uploader
+        let posted = vm.detail?.info.posted ?? gallery.posted
+        return HStack(alignment: .top, spacing: 14) {
             EhCoverThumbnail(
                 url: gallery.thumb,
                 size: coverSize,
@@ -271,11 +300,17 @@ struct GalleryDetailView: View {
                     .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let uploader = gallery.uploader, !uploader.isEmpty {
-                    Text(uploader + (gallery.posted.map { " · " + $0 } ?? ""))
-                        .font(EhFont.meta)
-                        .foregroundStyle(EhColor.secondaryLabel)
-                        .lineLimit(1)
+                if let uploader, !uploader.isEmpty {
+                    HStack(spacing: 6) {
+                        uploaderButton(uploader)
+                        if let posted {
+                            Text("· \(posted)")
+                                .font(EhFont.meta)
+                                .foregroundStyle(EhColor.secondaryLabel)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
 
                 Spacer(minLength: 4)
@@ -637,6 +672,76 @@ struct GalleryDetailView: View {
             } label: {
                 Label("复制标签", systemImage: "doc.on.doc")
             }
+        }
+    }
+
+    /// 上传者按钮 — 与 tagButton 同一套双分支：Split 布局推入左侧导航栈，
+    /// iPhone compact 用 value-based NavigationLink 推入当前栈。
+    ///
+    /// 上传者不是标签（同一上传者会发不同作者的作品），所以渲染成 `uploader:"名字"`
+    /// 这一独立命名空间——已实测它与 `/uploader/名字` 结果一致，且能和标签组合。
+    @ViewBuilder
+    private func uploaderButton(_ uploader: String) -> some View {
+        let query = SearchQuery(terms: [.makeUploader(uploader)])
+        Group {
+            if let searchNav = searchNavigationAction {
+                Button {
+                    searchNav.navigate(query)
+                } label: {
+                    uploaderLabel(uploader)
+                }
+                .buttonStyle(.plain)
+            } else {
+                NavigationLink(value: GalleryQueryDestination(query: query)) {
+                    uploaderLabel(uploader)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .contextMenu {
+            Button {
+                do {
+                    try EhDatabase.shared.insertSavedSearch(
+                        SavedSearchRecord(name: uploader, query: query.jsonString)
+                    )
+                    EhToast.success("已保存搜索")
+                } catch {
+                    EhToast.failure("保存失败")
+                    debugLog("[GalleryDetail] 保存上传者搜索失败: \(error)")
+                }
+            } label: {
+                Label("保存为已保存搜索", systemImage: "bookmark")
+            }
+            Divider()
+            Button {
+                #if os(iOS)
+                UIPasteboard.general.string = uploader
+                #else
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(uploader, forType: .string)
+                #endif
+                EhToast.success("已复制上传者名")
+            } label: {
+                Label("复制上传者名", systemImage: "doc.on.doc")
+            }
+        }
+    }
+
+    /// 上传者 chip。用 accent 着色示意可点——标签 chip 只是展示件，二者要能区分开。
+    private func uploaderLabel(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 11))
+            Text(text)
+                .font(EhFont.meta)
+                .lineLimit(1)
+        }
+        .foregroundStyle(EhColor.accent)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(EhColor.accentWash)
         }
     }
 

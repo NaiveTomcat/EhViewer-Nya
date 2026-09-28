@@ -317,6 +317,19 @@ public final class EhDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v4") { db in
+            // 已保存搜索表。`query` 存 SearchQuery 的 JSON（term 列表）。
+            // 与 quickSearch 分开：那里是「带分类/评分的搜索条件」，
+            // 这里存的是用户从任意查询（含上传者搜索）里收藏下来的完整条件。
+            // 纯增量建表，不动既有数据。
+            try db.create(table: "savedSearch") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("name", .text).notNull()
+                t.column("query", .text).notNull()
+                t.column("date", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 
@@ -444,6 +457,32 @@ public final class EhDatabase: Sendable {
     public func deleteQuickSearch(id: Int64) throws {
         try dbQueue.write { db in
             _ = try QuickSearchRecord.deleteOne(db, key: id)
+        }
+    }
+
+    // MARK: - 已保存搜索操作
+
+    public func getAllSavedSearches() throws -> [SavedSearchRecord] {
+        try dbQueue.read { db in
+            try SavedSearchRecord.order(Column("date").asc).fetchAll(db)
+        }
+    }
+
+    public func insertSavedSearch(_ record: SavedSearchRecord) throws {
+        try dbQueue.write { db in
+            try record.insert(db)
+        }
+    }
+
+    public func updateSavedSearch(_ record: SavedSearchRecord) throws {
+        try dbQueue.write { db in
+            try record.update(db)
+        }
+    }
+
+    public func deleteSavedSearch(id: Int64) throws {
+        try dbQueue.write { db in
+            _ = try SavedSearchRecord.deleteOne(db, key: id)
         }
     }
 
@@ -778,6 +817,10 @@ public final class EhDatabase: Sendable {
         // QuickSearch/Filter 使用 insert (生成新 autoincrement ID)
         try batchInsert(QuickSearchRecord.self, from: srcQueue, batchSize: batchSize)
         try batchInsert(FilterRecord.self, from: srcQueue, batchSize: batchSize)
+        // savedSearch 是 v4 新增表，旧备份里没有——缺表时跳过，否则导入会直接抛错
+        if try srcQueue.read({ try $0.tableExists("savedSearch") }) {
+            try batchInsert(SavedSearchRecord.self, from: srcQueue, batchSize: batchSize)
+        }
     }
 
     /// 分批导入 (save = INSERT OR REPLACE)
@@ -984,6 +1027,21 @@ public struct DownloadLabelRecord: Codable, FetchableRecord, PersistableRecord, 
 
     public init(label: String, date: Date = .init()) {
         self.label = label; self.date = date
+    }
+}
+
+/// 已保存搜索。`query` 是 `SearchQuery` 的 JSON 字符串。
+/// 这里的 `query: String` 存原始 JSON，避免 EhDatabase 依赖搜索模型的编解码细节。
+public struct SavedSearchRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable, Equatable {
+    public static let databaseTableName = "savedSearch"
+
+    public var id: Int64?
+    public var name: String
+    public var query: String
+    public var date: Date
+
+    public init(id: Int64? = nil, name: String, query: String, date: Date = .init()) {
+        self.id = id; self.name = name; self.query = query; self.date = date
     }
 }
 

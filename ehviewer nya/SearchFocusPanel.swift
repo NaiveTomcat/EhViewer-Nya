@@ -17,10 +17,10 @@ import EhModels
 import EhSettings
 
 struct SearchFocusPanel: View {
-    /// 输入框里的自由文本（不含已成为 token 的标签）
+    /// 输入框里的自由文本（不含已成为 token 的条件）
     let text: String
-    /// 已加入的标签 token
-    @Binding var tokens: [String]
+    /// 已加入的搜索条件
+    @Binding var tokens: [SearchTerm]
 
     let suggestions: [GalleryListViewModel.TagSuggestionItem]
     let history: [String]
@@ -35,6 +35,7 @@ struct SearchFocusPanel: View {
     var onOpenTagSelector: () -> Void
     var onOpenAdvancedSearch: () -> Void
     var onOpenQuickSearch: () -> Void
+    var onOpenSavedSearch: () -> Void
     var isAdvancedActive: Bool
 
     var body: some View {
@@ -88,6 +89,12 @@ struct SearchFocusPanel: View {
                     action: onOpenTagSelector
                 )
                 entryRow(
+                    symbol: "bookmark.fill",
+                    title: "已保存搜索",
+                    subtitle: "保存并复用常用查询（含上传者）",
+                    action: onOpenSavedSearch
+                )
+                entryRow(
                     symbol: isAdvancedActive
                         ? "line.3.horizontal.decrease.circle.fill"
                         : "line.3.horizontal.decrease.circle",
@@ -129,10 +136,13 @@ struct SearchFocusPanel: View {
 
     /// 标签建议行：命名空间 + 原文 + 中文 + 是否已加入
     private func suggestionRow(_ item: GalleryListViewModel.TagSuggestionItem) -> some View {
-        let already = tokens.contains(item.english)
+        // 建议给的是 `female:big breasts` 这样的原文，token 是结构化 term，
+        // 比较要按渲染后的形式
+        let rendered = SearchTerm.makeTag(item.english).render()
+        let already = tokens.contains { $0.render() == rendered }
         return Button {
             if already {
-                tokens.removeAll { $0 == item.english }
+                tokens.removeAll { $0.render() == rendered }
             } else {
                 onPickSuggestion(item.english)
             }

@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import EhModels
 import EhSettings
 
 struct TagSelectorView: View {
@@ -23,7 +24,7 @@ struct TagSelectorView: View {
     @State private var filter = ""
     @State private var tags: [TagEntry] = []
     @State private var picked: [String] = []
-    @State private var searchTokens: [String] = []
+    @State private var searchTokens: [SearchTerm] = []
     @State private var isFilterFocused = false
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]

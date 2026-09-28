@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import EhModels
 
 /// 标签翻译数据库
 /// 支持从 eh-tag-translation 项目下载的数据库文件
@@ -14,38 +15,11 @@ public final class EhTagDatabase: @unchecked Sendable {
     public static let shared = EhTagDatabase()
 
     // MARK: - Namespace 映射 (对应 Android NAMESPACE_TO_PREFIX/PREFIX_TO_NAMESPACE)
+    // 表已下沉到 EhModels/EhTagNamespace，这里转发以保持既有读取点不变。
 
-    public static let namespaceToPrefix: [String: String] = [
-        "rows": "n:",
-        "artist": "a:",
-        "cosplayer": "cos:",
-        "character": "c:",
-        "female": "f:",
-        "group": "g:",
-        "language": "l:",
-        "male": "m:",
-        "misc": "",
-        "mixed": "x:",
-        "other": "o:",
-        "parody": "p:",
-        "reclass": "r:"
-    ]
+    public static var namespaceToPrefix: [String: String] { EhTagNamespace.namespaceToPrefix }
 
-    public static let prefixToNamespace: [String: String] = [
-        "n:": "rows",
-        "a:": "artist",
-        "cos:": "cosplayer",
-        "c:": "character",
-        "f:": "female",
-        "g:": "group",
-        "l:": "language",
-        "m:": "male",
-        "": "misc",
-        "x:": "mixed",
-        "o:": "other",
-        "p:": "parody",
-        "r:": "reclass"
-    ]
+    public static var prefixToNamespace: [String: String] { EhTagNamespace.prefixToNamespace }
 
     // MARK: - 线程安全存储 (V-01 fix)
 
@@ -241,27 +215,7 @@ public final class EhTagDatabase: @unchecked Sendable {
     ///     "female:big breasts" → "f:\"big breasts$\""
     ///     "misc:tag" → "tag$"
     public static func rebuildKeyword(_ tag: String) -> String {
-        let parts = tag.split(separator: ":", maxSplits: 1)
-        guard parts.count == 2 else {
-            // 没有 namespace，直接返回 tag$
-            let cleaned = tag.trimmingCharacters(in: .whitespaces)
-            if cleaned.contains(" ") {
-                return "\"\(cleaned)$\""
-            }
-            return "\(cleaned)$"
-        }
-
-        let namespace = String(parts[0]).trimmingCharacters(in: .whitespaces)
-        let tagName = String(parts[1]).trimmingCharacters(in: .whitespaces)
-
-        // 获取短前缀
-        let prefix = namespaceToPrefix[namespace] ?? "\(namespace):"
-
-        if tagName.contains(" ") {
-            return "\(prefix)\"\(tagName)$\""
-        } else {
-            return "\(prefix)\(tagName)$"
-        }
+        SearchTerm.makeTag(tag).render()
     }
 
     /// 从搜索文本中提取最后一个未完成的关键词用于搜索建议

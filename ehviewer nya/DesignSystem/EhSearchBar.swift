@@ -18,6 +18,7 @@
 //
 
 import SwiftUI
+import EhModels
 import EhSettings
 
 #if canImport(UIKit)
@@ -28,8 +29,8 @@ import UIKit
 
 struct EhSearchBar: View {
     @Binding var text: String
-    /// 已确定的标签，显示为可整体删除的 token
-    @Binding var tokens: [String]
+    /// 已确定的搜索条件，显示为可整体删除的 token
+    @Binding var tokens: [SearchTerm]
 
     var placeholder: String = "搜索标签或标题"
     var showsCancelButton: Bool = true
@@ -136,7 +137,7 @@ struct EhSearchBar: View {
 /// 而这些 UISearchTextField 早就做对了。
 struct EhTokenSearchField: UIViewRepresentable {
     @Binding var text: String
-    @Binding var tokens: [String]
+    @Binding var tokens: [SearchTerm]
     let placeholder: String
     @Binding var isFocused: Bool
     var onSubmit: () -> Void
@@ -189,11 +190,11 @@ struct EhTokenSearchField: UIViewRepresentable {
         }
 
         // 只在内容真的不同时重建 token，否则每次 body 求值都会打断输入
-        let current = field.tokens.compactMap { $0.representedObject as? String }
+        let current = field.tokens.compactMap { $0.representedObject as? SearchTerm }
         if current != tokens {
-            field.tokens = tokens.map { tag in
-                let token = UISearchToken(icon: nil, text: Self.displayName(for: tag))
-                token.representedObject = tag
+            field.tokens = tokens.map { term in
+                let token = UISearchToken(icon: nil, text: Self.displayName(for: term))
+                token.representedObject = term
                 return token
             }
         }
@@ -213,14 +214,17 @@ struct EhTokenSearchField: UIViewRepresentable {
     /// 没有翻译时保留命名空间：此前剥掉了命名空间，`f:machine` 与手打的
     /// `machine` 都显示成「machine」，两枚 token 长得一模一样，
     /// 看起来就像同一个标签加了两遍。
-    private static func displayName(for tag: String) -> String {
-        let normalized = tag.trimmingCharacters(in: CharacterSet(charactersIn: " "))
-        let bare = normalized.replacingOccurrences(of: "\"", with: "")
-            .replacingOccurrences(of: "$", with: "")
-        if let zh = EhTagDatabase.shared.getTranslation(bare), zh != bare {
-            return zh
+    private static func displayName(for term: SearchTerm) -> String {
+        switch term.kind {
+        case .uploader:
+            return "上传者 · \(term.bareText)"
+        case .tag, .keyword:
+            let bare = term.bareText
+            if let zh = EhTagDatabase.shared.getTranslation(bare), zh != bare {
+                return zh
+            }
+            return bare
         }
-        return bare
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
@@ -233,7 +237,7 @@ struct EhTokenSearchField: UIViewRepresentable {
         }
 
         @objc func tokensChanged(_ field: UISearchTextField) {
-            let values = field.tokens.compactMap { $0.representedObject as? String }
+            let values = field.tokens.compactMap { $0.representedObject as? SearchTerm }
             if values != parent.tokens {
                 parent.tokens = values
             }
@@ -272,7 +276,7 @@ struct EhPageSearchModifier: ViewModifier {
     @Binding var text: String
     var placeholder: String
 
-    @State private var tokens: [String] = []
+    @State private var tokens: [SearchTerm] = []
     @State private var isFocused = false
 
     func body(content: Content) -> some View {

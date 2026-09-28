@@ -228,9 +228,7 @@ public struct ListUrlBuilder: Sendable, Codable {
 
             // 关键词
             if let kw = keyword.map(Self.sanitizeKeyword), !kw.isEmpty {
-                if let encoded = kw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                    params.append("f_search=\(encoded)")
-                }
+                params.append("f_search=\(SearchQueryEncoder.encodeValue(kw))")
             }
 
             // 分页
@@ -294,9 +292,8 @@ public struct ListUrlBuilder: Sendable, Codable {
                 url += "page=\(pageIndex)&"
             }
             url += "f_search="
-            if let kw = keyword.map(Self.sanitizeKeyword)?
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                url += kw
+            if let kw = keyword.map(Self.sanitizeKeyword) {
+                url += SearchQueryEncoder.encodeValue(kw)
             }
             return url
 

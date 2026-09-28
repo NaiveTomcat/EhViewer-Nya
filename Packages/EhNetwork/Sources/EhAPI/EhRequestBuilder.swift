@@ -1,4 +1,5 @@
 import Foundation
+import EhModels
 
 // MARK: - HTTP 请求构建 (对应 Android EhRequestBuilder.java)
 // 统一 User-Agent / Accept / Accept-Language 等伪装 Header
@@ -75,13 +76,9 @@ public enum EhRequestBuilder {
     /// application/x-www-form-urlencoded 编码 (对齐 OkHttp FormBody)
     /// 空格编码为 +, 保留字符全部 percent-encode
     private static func formURLEncode(_ string: String) -> String {
-        // 仅允许: 字母 / 数字 / - _ . *
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-_.*")
-        return string
-            .addingPercentEncoding(withAllowedCharacters: allowed)?
+        // 仅允许: 字母 / 数字 / - _ . *（与 SearchQueryEncoder 同一允许集）
+        SearchQueryEncoder.encodeValue(string)
             .replacingOccurrences(of: "%20", with: "+")
-            ?? string
     }
 
     /// 构建 Multipart/form-data POST 请求 (用于以图搜图等)

@@ -27,7 +27,7 @@ struct GalleryListView: View {
         /// 排行榜。period 就是 toplist.php 的 tl 参数：
         /// 15 全部时间 / 13 过去一年 / 12 过去一个月 / 11 昨天
         case toplist(period: Int)
-        case search(keyword: String)
+        case search(SearchQuery)
         case tag(keyword: String)
         case favorites(slot: Int)
 
@@ -41,6 +41,7 @@ struct GalleryListView: View {
     @State private var showQuickSearch = false
     @State private var showAdvancedSearch = false
     @State private var showTagSelector = false
+    @State private var showSavedSearches = false
     @State private var advancedSearch = AdvancedSearchState()
     @State private var selectedQuickSearch: QuickSearchRecord?
     @State private var selectedGallery: GalleryInfo?
@@ -89,7 +90,7 @@ struct GalleryListView: View {
     private var toplistPeriod: Binding<Int>?
     /// 提交搜索时交给父容器处理（切到独立的搜索页），而不是就地把
     /// 当前数据源变成搜索结果。只有浏览容器会传它。
-    private var onSearchSubmit: ((String) -> Void)?
+    private var onSearchSubmit: ((SearchQuery) -> Void)?
 
     static let toplistPeriods: [(tl: Int, title: String)] = [
         (15, "全部时间"), (13, "过去一年"), (12, "过去一月"), (11, "昨天"),
@@ -116,7 +117,7 @@ struct GalleryListView: View {
 
     /// 浏览容器的根列表 — 在搜索栏下方带出顶部切页条
     init(mode: ListMode, browseSource: Binding<BrowseSource>, toplistPeriod: Binding<Int>? = nil,
-         onSearchSubmit: ((String) -> Void)? = nil) {
+         onSearchSubmit: ((SearchQuery) -> Void)? = nil) {
         self.toplistPeriod = toplistPeriod
         self.onSearchSubmit = onSearchSubmit
         self.mode = mode
@@ -166,16 +167,16 @@ struct GalleryListView: View {
     /// 当前实际运行模式 — 如果搜索框有内容，则为搜索模式
     /// 但收藏夹模式下搜索应保持在收藏夹内 (对齐 Android: 收藏夹搜索只搜收藏内容)
     private var effectiveMode: ListMode {
-        if !viewModel.searchText.isEmpty {
+        if !viewModel.searchQuery.isEmpty {
             if case .favorites = mode {
-                // 收藏夹下搜索保持在收藏夹模式，搜索关键词通过 searchText 传递给 API
+                // 收藏夹下搜索保持在收藏夹模式，搜索关键词通过 searchQuery 传递给 API
                 return mode
             }
             // 浏览容器里由父视图把搜索切成独立的一页（见 onSearchSubmit），
             // 这里不能再就地把「订阅」「热门」「排行」偷偷变成搜索结果 ——
             // 那正是「顶部还高亮着订阅、内容却是全站搜索」的来源。
             if onSearchSubmit != nil { return mode }
-            return .search(keyword: viewModel.searchText)
+            return .search(viewModel.searchQuery)
         }
         return mode
     }
@@ -205,6 +206,10 @@ struct GalleryListView: View {
                             // 标签点击推入的画廊列表 (对齐 Android: onTagClick → 叠加新列表)
                             GalleryListView(mode: .tag(keyword: dest.tag), selection: $selectedGallery)
                         }
+                        .navigationDestination(for: GalleryQueryDestination.self) { dest in
+                            // 上传者等查询推入的画廊列表
+                            GalleryListView(mode: .search(dest.query), selection: $selectedGallery)
+                        }
                 }
                 .navigationSplitViewColumnWidth(min: 350, ideal: 400, max: 500)
             } detail: {
@@ -219,6 +224,9 @@ struct GalleryListView: View {
                 }
                 .environment(\.tagNavigationAction, TagNavigationAction { tag in
                     sidebarPath.append(TagSearchDestination(tag: tag))
+                })
+                .environment(\.searchNavigationAction, SearchNavigationAction { query in
+                    sidebarPath.append(GalleryQueryDestination(query: query))
                 })
             }
         } else {
@@ -235,13 +243,13 @@ struct GalleryListView: View {
             if !GalleryStatusCache.shared.isLoaded {
                 await GalleryStatusCache.shared.reload()
             }
-            if case .tag(let keyword) = mode, viewModel.searchText.isEmpty {
-                viewModel.searchText = keyword
+            if case .tag(let keyword) = mode, viewModel.searchQuery.isEmpty {
+                viewModel.searchQuery = SearchQuery(terms: [.keyword(keyword)])
             }
             // 搜索页刚建好时，把查询摆回输入框——否则搜索页的输入框是空的，
             // 用户看不到自己搜的是什么，也没法在此基础上增删条件
-            if case .search(let keyword) = mode, searchTokens.isEmpty, !keyword.isEmpty {
-                syncField(from: keyword)
+            if case .search(let query) = mode, searchTerms.isEmpty, !query.isEmpty {
+                syncField(from: query)
             }
 
             // 安全兜底: 确保数据加载在任何分支下都能触发
@@ -335,6 +343,10 @@ struct GalleryListView: View {
             .navigationDestination(for: TagSearchDestination.self) { dest in
                 GalleryListView(mode: .tag(keyword: dest.tag), isPushed: true)
             }
+            // 上传者等查询推入的画廊列表
+            .navigationDestination(for: GalleryQueryDestination.self) { dest in
+                GalleryListView(mode: .search(dest.query), isPushed: true)
+            }
             .navigationTitle(navigationTitle)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -365,6 +377,12 @@ struct GalleryListView: View {
             .sheet(isPresented: $showAdvancedSearch) {
                 AdvancedSearchView(state: advancedSearch)
             }
+            .sheet(isPresented: $showSavedSearches) {
+                SavedSearchView(currentQuery: currentQuery, onRun: { query in
+                    showSavedSearches = false
+                    dispatchQuery(query)
+                })
+            }
             .sheet(item: $pendingDownload) { gallery in
                 DownloadLabelPicker(
                     onSelect: { label in
@@ -393,10 +411,13 @@ struct GalleryListView: View {
             }
             .sheet(isPresented: $showTagSelector) {
                 TagSelectorView { keyword in
-                    // 选中的标签直接进搜索框成为一枚 token，
-                    // 而不是在选择器里另画一条「预览」——预览是同一信息说两遍
-                    if !searchTokens.contains(keyword) {
-                        searchTokens.append(keyword)
+                    // 选中的标签直接进搜索框成为一条条件，
+                    // 而不是在选择器里另画一条「预览」——预览是同一信息说两遍。
+                    // keyword 是已渲染的搜索式（如 `f:"big breasts$"`），解析回来即可。
+                    for term in SearchQuery.parse(keyword).terms {
+                        if !searchTerms.contains(where: { $0.render() == term.render() }) {
+                            searchTerms.append(term)
+                        }
                     }
                 }
             }
@@ -467,10 +488,18 @@ struct GalleryListView: View {
         .sheet(isPresented: $showAdvancedSearch) {
             AdvancedSearchView(state: advancedSearch)
         }
+        .sheet(isPresented: $showSavedSearches) {
+            SavedSearchView(currentQuery: currentQuery, onRun: { query in
+                showSavedSearches = false
+                dispatchQuery(query)
+            })
+        }
         .sheet(isPresented: $showTagSelector) {
             TagSelectorView { keyword in
-                if !searchTokens.contains(keyword) {
-                    searchTokens.append(keyword)
+                for term in SearchQuery.parse(keyword).terms {
+                    if !searchTerms.contains(where: { $0.render() == term.render() }) {
+                        searchTerms.append(term)
+                    }
                 }
             }
         }
@@ -512,7 +541,7 @@ struct GalleryListView: View {
         case .subscription: return "订阅"
         case .popular: return "热门"
         case .toplist: return "排行"
-        case .search(let kw): return "搜索: \(kw)"
+        case .search(let query): return "搜索: \(query.render())"
         case .tag: return "标签搜索"  // 对齐 Android: 标签关键字显示在搜索框而非标题
         case .favorites: return "收藏"
         }
@@ -716,10 +745,18 @@ struct GalleryListView: View {
         .sheet(isPresented: $showAdvancedSearch) {
             AdvancedSearchView(state: advancedSearch)
         }
+        .sheet(isPresented: $showSavedSearches) {
+            SavedSearchView(currentQuery: currentQuery, onRun: { query in
+                showSavedSearches = false
+                dispatchQuery(query)
+            })
+        }
         .sheet(isPresented: $showTagSelector) {
             TagSelectorView { keyword in
-                if !searchTokens.contains(keyword) {
-                    searchTokens.append(keyword)
+                for term in SearchQuery.parse(keyword).terms {
+                    if !searchTerms.contains(where: { $0.render() == term.render() }) {
+                        searchTerms.append(term)
+                    }
                 }
             }
         }
@@ -752,20 +789,20 @@ struct GalleryListView: View {
 
     // MARK: - 搜索栏 (对齐 Android SearchBar，从 toolbar 移到 body header 以获得完整宽度)
 
-    /// 已确定的标签 token。文字与 token 在同一个输入框里混排：
-    /// 点 token 上的叉删掉整个标签，光标在文字里时退格照常改字。
-    @State private var searchTokens: [String] = []
+    /// 已确定的搜索条件（标签 / 上传者 / 自由文本）。文字与 term 在同一个输入框里
+    /// 混排：点 term 上的叉删掉整个条件，光标在文字里时退格照常改字。
+    @State private var searchTerms: [SearchTerm] = []
 
     /// 输入框里**正在打的文字**，只含自由文本。
     ///
-    /// 不能直接绑 `viewModel.searchText`：那里保存的是提交给服务端的完整查询，
-    /// 提交时会把 token 合并进去；绑在一起就会出现「token 胶囊后面还跟着
+    /// 不能直接绑 `viewModel.searchQuery`：那里保存的是提交给服务端的完整查询，
+    /// 提交时会把 term 合并进去；绑在一起就会出现「term 胶囊后面还跟着
     /// 同一个标签的文字」的重复显示。
     @State private var searchFieldText = ""
 
-    /// 正在把外部查询回填进输入框。回填期间要挡住 token 变化触发的重搜，
+    /// 正在把外部查询回填进输入框。回填期间要挡住 term 变化触发的重搜，
     /// 否则会把快速搜索自带的分类/评分条件冲掉，还白跑一次网络。
-    @State private var isSyncingField = false
+    @State private var isSyncingTerms = false
 
     /// 等待选择收藏夹的画廊（没有设默认收藏夹时）
     @State private var pendingFavorite: GalleryInfo?
@@ -776,7 +813,7 @@ struct GalleryListView: View {
     private var searchBarView: some View {
         EhSearchBar(
             text: $searchFieldText,
-            tokens: $searchTokens,
+            tokens: $searchTerms,
             placeholder: "搜索标签或标题",
             isFocused: $isSearchFocused,
             // 右侧不再放小图标：15pt 的点按目标远低于 HIG 的 44pt，手机上按不中。
@@ -787,20 +824,20 @@ struct GalleryListView: View {
         .onChange(of: searchFieldText) { _, text in
             viewModel.updateSuggestions(for: text)
         }
-        .onChange(of: searchTokens) { _, _ in
-            guard !isSyncingField else { return }
-            // token 变了就重搜：删掉一个标签本身就是一次条件变更
-            submitSearch()
+        .onChange(of: searchTerms) { _, _ in
+            guard !isSyncingTerms else { return }
+            // term 变了就重搜：删掉一个条件本身就是一次条件变更
+            dispatchCurrentQuery()
         }
         // 外部改了查询就回填到输入框。
         //
-        // 输入框显示的是 searchTokens + searchFieldText，而不是
-        // viewModel.searchText（两者当初为了修「同一标签既是 token 又是文字」
-        // 的重复显示而解耦）。于是任何只写 viewModel.searchText 的路径
+        // 输入框显示的是 searchTerms + searchFieldText，而不是
+        // viewModel.searchQuery（两者当初为了修「同一标签既是 term 又是文字」
+        // 的重复显示而解耦）。于是任何只写 viewModel.searchQuery 的路径
         // ——快速搜索、收藏夹内搜索、从详情页点标签进来——输入框都是空的。
         // 与其逐条去补，不如在这里统一回填：新增路径也自动生效。
-        .onChange(of: viewModel.searchText) { _, newValue in
-            guard newValue != fieldQuery else { return }
+        .onChange(of: viewModel.searchQuery) { _, newValue in
+            guard newValue != currentQuery else { return }
             syncField(from: newValue)
         }
     }
@@ -809,42 +846,29 @@ struct GalleryListView: View {
     /// 搜某个标签时，最想确认的就是「这本是因为哪个标签被搜出来的」，
     /// 而它常常排在第五个之后，根本看不见。
     private var activeSearchTags: Set<String> {
-        Set(searchTokens)
-    }
-
-    /// 输入框当前表达的查询（token + 正在打的字）
-    private var fieldQuery: String {
-        let typed = searchFieldText.trimmingCharacters(in: .whitespaces)
-        return (searchTokens + (typed.isEmpty ? [] : [typed])).joined(separator: " ")
-    }
-
-    /// 把一条查询摆进输入框，拆成 token 显示
-    private func syncField(from query: String) {
-        isSyncingField = true
-        searchTokens = Self.splitQuery(query)
-        searchFieldText = ""
-        // 下一个 runloop 再解锁：onChange(searchTokens) 是在本次更新之后才跑的
-        DispatchQueue.main.async { isSyncingField = false }
-    }
-
-    /// 按空格拆查询，但引号内的空格不拆。
-    /// `female:"big ass$" translated` → [`female:"big ass$"`, `translated`]
-    static func splitQuery(_ query: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var inQuotes = false
-        for ch in query {
-            if ch == "\"" {
-                inQuotes.toggle()
-                current.append(ch)
-            } else if ch == " " && !inQuotes {
-                if !current.isEmpty { tokens.append(current); current = "" }
-            } else {
-                current.append(ch)
+        Set(searchTerms.compactMap { term in
+            switch term.kind {
+            case .tag, .keyword: return term.bareText
+            case .uploader: return nil
             }
-        }
-        if !current.isEmpty { tokens.append(current) }
-        return tokens
+        })
+    }
+
+    /// 输入框当前表达的查询（已确定 term + 正在打的字）
+    private var currentQuery: SearchQuery {
+        let typed = searchFieldText.trimmingCharacters(in: .whitespaces)
+        var terms = searchTerms
+        if !typed.isEmpty { terms.append(.keyword(typed)) }
+        return SearchQuery(terms: terms)
+    }
+
+    /// 把一条查询摆进输入框，拆成 term 显示
+    private func syncField(from query: SearchQuery) {
+        isSyncingTerms = true
+        searchTerms = query.terms
+        searchFieldText = ""
+        // 下一个 runloop 再解锁：onChange(searchTerms) 是在本次更新之后才跑的
+        DispatchQueue.main.async { isSyncingTerms = false }
     }
 
     /// 这一本收藏过没有。云端收藏夹或本地收藏都算。
@@ -879,47 +903,65 @@ struct GalleryListView: View {
         }
     }
 
-    /// 点列表行里的标签 chip：把它收成一枚 token 并立刻搜。
-    /// 标签在列表里一直只是装饰，看到感兴趣的还得自己回搜索框打一遍。
     /// 快速搜索。在浏览容器里同样要切到搜索页，
     /// 而不是把当前这一页原地变成搜索结果。
     private func applyQuickSearch(_ search: QuickSearchRecord) {
         if let onSearchSubmit, let keyword = search.keyword, !keyword.isEmpty {
-            onSearchSubmit(keyword)
+            onSearchSubmit(SearchQuery.parse(keyword))
         } else {
             viewModel.applyQuickSearch(search)
         }
     }
 
+    /// 点列表行里的标签 chip：把它**追加**成一枚 term 并立刻搜。
+    ///
+    /// 追加而不是覆盖是关键——此前 `searchTokens = [quoted]` 的覆盖式赋值
+    /// 让点第二个标签会顶掉第一个，多标签根本无法组合。
+    /// 在浏览容器里同样要切到搜索页，否则点个标签就把「热门」变成了搜索结果。
     private func searchTag(_ tag: String) {
-        let quoted = Self.exactTagQuery(for: tag)
-        searchTokens = [quoted]
-        searchFieldText = ""
+        appendTerm(SearchTerm.makeTag(tag))
+        dispatchCurrentQuery()
+    }
+
+    /// 追加一枚 term（按渲染形式去重）。
+    ///
+    /// 用 `isSyncingTerms` 挡住它触发的 `onChange(of: searchTerms)` 重搜，
+    /// 否则会和调用点显式的 dispatch 撞成两次网络请求。
+    private func appendTerm(_ term: SearchTerm) {
+        guard !searchTerms.contains(where: { $0.render() == term.render() }) else { return }
+        isSyncingTerms = true
+        searchTerms.append(term)
+        DispatchQueue.main.async { isSyncingTerms = false }
+    }
+
+    /// 用当前输入框表达的条件发起搜索。
+    ///
+    /// 标签点击、上传者点击、已保存搜索、历史选择与手动提交都走这里，
+    /// 避免各写一套而出现重复提交或状态不一致。
+    private func dispatchCurrentQuery() {
         isSearchFocused = false
-        // 和手动提交走同一条路：在浏览容器里要切到搜索页，
-        // 否则点个标签就把「热门」变成了搜索结果
+        let query = currentQuery
+        guard !query.isEmpty else { return }
         if let onSearchSubmit {
-            onSearchSubmit(quoted)
+            // 交给浏览容器切到搜索页；这一份列表随之被重建
+            onSearchSubmit(query)
         } else {
-            viewModel.performSearch(query: quoted, advanced: advancedSearch)
+            viewModel.performSearch(query: query, advanced: advancedSearch)
         }
     }
 
-    /// 把一个标签变成精确匹配的搜索式。
-    ///
-    /// 值那一半必须带引号，命名空间不能进引号里：
-    ///   `big ass`         → `"big ass$"`
-    ///   `female:big ass`  → `female:"big ass$"`
-    ///
-    /// 此前带命名空间的标签是原样透传的，于是 `female:big ass` 里的空格
-    /// 把它拆成了 `female:big` 和 `ass` 两个词——点这类标签永远搜不到东西，
-    /// 而不含空格的标签（`parody:haikyuu!!`）恰好又是好的，所以很容易漏掉。
-    static func exactTagQuery(for tag: String) -> String {
-        guard let colon = tag.firstIndex(of: ":") else { return "\"\(tag)$\"" }
-        let namespace = String(tag[tag.startIndex..<colon])
-        let value = String(tag[tag.index(after: colon)...])
-        guard !namespace.isEmpty, !value.isEmpty else { return "\"\(tag)$\"" }
-        return "\(namespace):\"\(value)$\""
+    /// 用一个现成的查询替换当前条件并搜索（历史条目、已保存搜索）。
+    private func dispatchQuery(_ query: SearchQuery) {
+        isSyncingTerms = true
+        searchTerms = query.terms
+        DispatchQueue.main.async { isSyncingTerms = false }
+        searchFieldText = ""
+        isSearchFocused = false
+        if let onSearchSubmit {
+            onSearchSubmit(query)
+        } else {
+            viewModel.performSearch(query: query, advanced: advancedSearch)
+        }
     }
 
     /// 下载。建过下载标签且没设默认时先问放哪个标签——
@@ -934,28 +976,17 @@ struct GalleryListView: View {
 
     /// 提交搜索。
     ///
-    /// token 与自由文本在**提交时**才合并，不写回 viewModel.searchText——
-    /// 写回去会让同一个标签既显示为 token 又显示为文字（搜索框里出现
+    /// 正在打的文字在**提交时**才收成一枚 term，不写回 viewModel.searchQuery——
+    /// 写回去会让同一个条件既显示为 term 又显示为文字（搜索框里出现
     /// 「bdsm」胶囊后面还跟着 f:bdsm$ 这样的重复）。
     private func submitSearch() {
-        isSearchFocused = false
         let typed = searchFieldText.trimmingCharacters(in: .whitespaces)
 
-        // 打出来的自由文本若本身就是一个标签，收成 token；
-        // 提交后 token 留在输入框里，这样从列表回来仍能看到当前搜索条件，
-        // 也能逐个删掉某一条重搜，而不必整串清空重打。
-        if !typed.isEmpty, !searchTokens.contains(typed) {
-            searchTokens.append(typed)
-        }
+        // 打出来的自由文本收成一枚 term 留在输入框里，这样从列表回来仍能看到
+        // 当前搜索条件，也能逐个删掉某一条重搜，而不必整串清空重打。
+        if !typed.isEmpty { appendTerm(.keyword(typed)) }
         searchFieldText = ""
-
-        let query = searchTokens.joined(separator: " ")
-        if let onSearchSubmit {
-            // 交给浏览容器切到搜索页；这一份列表随之被重建
-            onSearchSubmit(query)
-        } else {
-            viewModel.performSearch(query: query, advanced: advancedSearch)
-        }
+        dispatchCurrentQuery()
     }
 
     // MARK: - 统一工具栏 (对齐 Android FAB secondaryButtons)
@@ -993,60 +1024,32 @@ struct GalleryListView: View {
         if isSearchFocused {
             SearchFocusPanel(
                 text: searchFieldText,
-                tokens: $searchTokens,
+                tokens: $searchTerms,
                 suggestions: viewModel.suggestions,
                 history: viewModel.searchHistory,
                 onPickSuggestion: { tag in
                     // 建议取代了正在打的那段文字：清掉它，否则提交时它会再变成
-                    // 一个 token，同一个标签就出现两遍
+                    // 一条条件，同一个标签就出现两遍。建议给的是 `female:big breasts`
+                    // 这样的原文，收成结构化 tag 才能正确加引号。
                     searchFieldText = ""
-                    if !searchTokens.contains(tag) { searchTokens.append(tag) }
+                    let term = SearchTerm.makeTag(tag)
+                    if !searchTerms.contains(where: { $0.render() == term.render() }) {
+                        searchTerms.append(term)
+                    }
                 },
                 onClearHistory: { viewModel.clearSearchHistory() },
                 onPickHistory: { term in
-                    // 历史条目本身就是一条完整查询，直接提交，
+                    // 历史条目本身就是一条完整查询，替换掉当前条件直接搜，
                     // 不塞进输入框再拼一次
-                    searchFieldText = ""
-                    searchTokens = []
-                    isSearchFocused = false
-                    viewModel.performSearch(query: term, advanced: advancedSearch)
+                    dispatchQuery(SearchQuery.parse(term))
                 },
                 onOpenTagSelector: { showTagSelector = true },
                 onOpenAdvancedSearch: { showAdvancedSearch = true },
                 onOpenQuickSearch: { showQuickSearch = true },
+                onOpenSavedSearch: { isSearchFocused = false; showSavedSearches = true },
                 isAdvancedActive: advancedSearch.isEnabled
             )
             .transition(.opacity)
-        }
-    }
-
-    // MARK: - 统一搜索建议 (已废弃，保留兼容)
-
-    @ViewBuilder
-    private var searchSuggestionsBlock: some View {
-        // 搜索历史 (搜索框为空时显示)
-        if viewModel.searchText.isEmpty && !viewModel.searchHistory.isEmpty {
-            Section {
-                ForEach(viewModel.searchHistory, id: \.self) { term in
-                    Button {
-                        viewModel.searchText = term
-                        viewModel.searchWithAdvanced(advancedSearch)
-                    } label: {
-                        Label(term, systemImage: "clock")
-                    }
-                }
-                Button(role: .destructive) {
-                    viewModel.clearSearchHistory()
-                } label: {
-                    Label("清除搜索历史", systemImage: "trash")
-                }
-            } header: {
-                Text("搜索历史")
-            }
-        }
-        // 标签建议
-        if !viewModel.suggestions.isEmpty {
-            searchSuggestionsContent
         }
     }
 
@@ -1230,34 +1233,6 @@ struct GalleryListView: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-
-    // MARK: - 搜索建议内容 (对齐 Android SearchBar.updateSuggestions)
-
-    @ViewBuilder
-    private var searchSuggestionsContent: some View {
-        ForEach(viewModel.suggestions) { suggestion in
-            Button {
-                viewModel.applySuggestion(suggestion.english)
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(suggestion.chinese)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                        Text(suggestion.english)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Divider().padding(.leading, 16)
-        }
     }
 
     /// 当前错误是不是 IP 封禁 (issue #1: 以前这种情况只显示一片空白)
@@ -1489,7 +1464,10 @@ class GalleryListViewModel {
     var filteredOutCount = 0
     var isLoading = false
     var errorMessage: String?
-    var searchText = ""
+    /// 当前查询。**唯一真相源** —— URL 构建、历史、缓存 key 都从这里派生。
+    var searchQuery: SearchQuery = .empty
+    /// 渲染成 `f_search` 的字符串。仅供只读用途（历史、标题、快速搜索抽屉回显）。
+    var searchText: String { searchQuery.render() }
     var hasMore = false
     var totalPages = 0 // 总页数 (对齐 Android mHelper.mPages)
     var showGoToDialog = false // 跳页对话框 (页码模式，仅 TopList 使用)
@@ -1574,20 +1552,6 @@ class GalleryListViewModel {
                 suggestions = results.map { TagSuggestionItem(chinese: $0.chinese, english: $0.english) }
             }
         }
-    }
-
-    /// 应用搜索建议到搜索文本
-    /// 把标签选择器选中的关键词接到搜索框末尾
-    func appendSearchKeyword(_ keyword: String) {
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        // 已经有这个标签就不重复追加
-        guard !trimmed.contains(keyword) else { return }
-        searchText = trimmed.isEmpty ? keyword : trimmed + " " + keyword
-    }
-
-    func applySuggestion(_ suggestion: String) {
-        searchText = EhTagDatabase.applySuggestion(to: searchText, suggestion: suggestion)
-        suggestions = []
     }
 
     private var currentPage = 0
@@ -1693,44 +1657,21 @@ class GalleryListViewModel {
         await fetchPage(mode: mode, page: 0)
     }
 
-    func search() {
-        // 粘贴进来的搜索词常带 \r\n，会把 `artist:foo` 之类的语法拆断
-        // (对齐上游 2026-03-02 / 03-14「搜索时过滤文本中的换行符」)
-        searchText = ListUrlBuilder.sanitizeKeyword(searchText)
-        guard !searchText.isEmpty else { return }
-        addSearchToHistory(searchText)
-        galleries = []
-        isLoading = true
-        errorMessage = nil
-        currentPage = 0
-        prevHref = nil
-        nextHref = nil
-        // 清除高级搜索参数
-        currentAdvanceSearch = -1
-        currentMinRating = -1
-        currentPageFrom = -1
-        currentPageTo = -1
-        currentCategory = 0
-        currentSearchMode = .normal
-
-        Task {
-            await fetchPage(mode: .search(keyword: searchText), page: 0)
-        }
-    }
-
     /// 带高级搜索参数的搜索 (对齐 Android AdvanceSearchTable → ListUrlBuilder)
-    /// 用给定的查询串搜索。
+    /// 用给定的查询搜索。
     ///
-    /// token 与自由文本在提交时才合并成一串传进来，`searchText` 只保存用户
-    /// 正在打的那部分——这样搜索框里不会出现「token + 同一内容的文字」的重复。
-    func performSearch(query: String, advanced: AdvancedSearchState) {
-        searchText = query
+    /// token 与自由文本在提交时才合并成一个 `SearchQuery` 传进来，
+    /// `searchQuery` 保存的就是它——视图的输入框状态与它一一对应。
+    func performSearch(query: SearchQuery, advanced: AdvancedSearchState) {
+        searchQuery = query
         searchWithAdvanced(advanced)
     }
 
     func searchWithAdvanced(_ state: AdvancedSearchState) {
-        searchText = ListUrlBuilder.sanitizeKeyword(searchText)
-        if !searchText.isEmpty { addSearchToHistory(searchText) }
+        // 粘贴进来的搜索词常带 \r\n，会把 `artist:foo` 之类的语法拆断
+        // (对齐上游 2026-03-02 / 03-14「搜索时过滤文本中的换行符」)
+        let rendered = ListUrlBuilder.sanitizeKeyword(searchQuery.render())
+        if !rendered.isEmpty { addSearchToHistory(rendered) }
         currentAdvanceSearch = state.advanceSearchValue
         currentMinRating = state.minRatingValue
         currentPageFrom = state.pageFromValue
@@ -1739,7 +1680,7 @@ class GalleryListViewModel {
         currentSearchMode = state.searchMode
 
         // 没有关键字时，按分类过滤首页 (对齐 Android: 无关键字也能按分类搜索)
-        if searchText.isEmpty {
+        if rendered.isEmpty {
             galleries = []
             isLoading = true
             errorMessage = nil
@@ -1759,7 +1700,7 @@ class GalleryListViewModel {
         prevHref = nil
         nextHref = nil
         Task {
-            await fetchPage(mode: .search(keyword: searchText), page: 0)
+            await fetchPage(mode: .search(searchQuery), page: 0)
         }
     }
 
@@ -1773,7 +1714,7 @@ class GalleryListViewModel {
         }
 
         // 有活跃搜索关键字时，重新执行搜索
-        if !searchText.isEmpty {
+        if !searchQuery.isEmpty {
             galleries = []
             isLoading = true
             errorMessage = nil
@@ -1781,7 +1722,7 @@ class GalleryListViewModel {
             prevHref = nil
             nextHref = nil
             Task {
-                await fetchPage(mode: .search(keyword: searchText), page: 0)
+                await fetchPage(mode: .search(searchQuery), page: 0)
             }
             return
         }
@@ -1812,7 +1753,7 @@ class GalleryListViewModel {
 
     func applyQuickSearch(_ search: QuickSearchRecord) {
         guard let keyword = search.keyword, !keyword.isEmpty else { return }
-        searchText = keyword
+        searchQuery = SearchQuery.parse(keyword)
         galleries = []
         isLoading = true
         errorMessage = nil
@@ -2079,10 +2020,10 @@ class GalleryListViewModel {
                 builder.pageFrom = currentPageFrom
                 builder.pageTo = currentPageTo
                 baseUrl = builder.build(site: site)
-            case .search(let keyword):
+            case .search(let query):
                 var builder = ListUrlBuilder()
                 builder.mode = ListUrlBuilder.Mode(rawValue: currentSearchMode.listMode) ?? .normal
-                builder.keyword = keyword
+                builder.keyword = query.render()
                 builder.advanceSearch = currentAdvanceSearch
                 builder.minRating = currentMinRating
                 builder.pageFrom = currentPageFrom
@@ -2148,10 +2089,10 @@ class GalleryListViewModel {
             builder.pageFrom = currentPageFrom
             builder.pageTo = currentPageTo
             baseUrl = builder.build(site: site)
-        case .search(let keyword):
+        case .search(let query):
             var builder = ListUrlBuilder()
             builder.mode = ListUrlBuilder.Mode(rawValue: currentSearchMode.listMode) ?? .normal
-            builder.keyword = keyword
+            builder.keyword = query.render()
             builder.advanceSearch = currentAdvanceSearch
             builder.minRating = currentMinRating
             builder.pageFrom = currentPageFrom
@@ -2209,10 +2150,9 @@ class GalleryListViewModel {
         }
         
         if let keyword = favSearchKeyword, !keyword.isEmpty {
-            let encoded = keyword.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? keyword
-            favUrl += "&f_search=\(encoded)"
+            favUrl += "&f_search=\(SearchQueryEncoder.encodeValue(keyword))"
         }
-        
+
         do {
             let result = try await EhAPI.shared.getGalleryList(url: favUrl)
             self.galleries = result.galleries
@@ -2270,10 +2210,10 @@ class GalleryListViewModel {
                 urlString = page > 0
                     ? "\(host)toplist.php?tl=\(period)&p=\(page)"
                     : "\(host)toplist.php?tl=\(period)"
-            case .search(let keyword):
+            case .search(let query):
                 var builder = ListUrlBuilder()
                 builder.mode = ListUrlBuilder.Mode(rawValue: currentSearchMode.listMode) ?? .normal
-                builder.keyword = keyword
+                builder.keyword = query.render()
                 builder.pageIndex = page
                 builder.advanceSearch = currentAdvanceSearch
                 builder.minRating = currentMinRating
@@ -2298,8 +2238,7 @@ class GalleryListViewModel {
                 }
                 // 收藏搜索 (对齐 Android FavoritesScene.onGetFavoritesSuccess)
                 if let keyword = favSearchKeyword, !keyword.isEmpty {
-                    let encoded = keyword.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? keyword
-                    favUrl += "&f_search=\(encoded)"
+                    favUrl += "&f_search=\(SearchQueryEncoder.encodeValue(keyword))"
                 }
                 urlString = favUrl
             }
@@ -2379,7 +2318,7 @@ class GalleryListViewModel {
         case .subscription: return "watched:\(filterSignature):\(page)"
         case .popular: return "popular:\(page)"
         case .toplist(let period): return "toplist:\(period):\(page)"
-        case .search(let kw): return "search:\(kw):\(filterSignature):\(page)"
+        case .search(let query): return "search:\(query.render()):\(filterSignature):\(page)"
         case .tag(let kw): return "tag:\(kw):\(page)"
         case .favorites(let slot): return "fav:\(slot):\(favSearchKeyword ?? ""):\(page)"
         }

@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import EhModels
 
 /// 顶部切页的四个数据源
 enum BrowseSource: String, CaseIterable, Hashable {
@@ -39,10 +40,10 @@ enum BrowseSource: String, CaseIterable, Hashable {
     /// 排行榜此前不走 GalleryListView（另有一套「名次 + 一行文字」的视图），
     /// 结果那一页和 App 里其它画廊列表完全不是一个东西。
     /// toplist.php 返回的本来就是标准画廊列表表格，所以现在统一走这里。
-    func listMode(toplistPeriod: Int, searchQuery: String) -> GalleryListView.ListMode {
+    func listMode(toplistPeriod: Int, searchQuery: SearchQuery) -> GalleryListView.ListMode {
         switch self {
         case .home:         return .home
-        case .search:       return .search(keyword: searchQuery)
+        case .search:       return .search(searchQuery)
         case .subscription: return .subscription
         case .popular:      return .popular
         case .toplist:      return .toplist(period: toplistPeriod)
@@ -55,7 +56,7 @@ struct BrowseHomeView: View {
     /// 排行榜的时间范围（toplist.php 的 tl）。默认全部时间。
     @State private var toplistPeriod = 15
     /// 搜索页的查询。由 GalleryListView 提交上来，数据源随之切到 .search。
-    @State private var searchQuery = ""
+    @State private var searchQuery = SearchQuery.empty
 
     init(initial: BrowseSource = .home) {
         _source = State(initialValue: initial)
@@ -76,6 +77,6 @@ struct BrowseHomeView: View {
         )
         // 数据源、时间范围或查询变了就重建：每个源有各自的分页游标与筛选条件，
         // 复用同一个 ViewModel 会把上一个源的游标带到下一个源。
-        .id("\(source.rawValue)-\(source == .toplist ? toplistPeriod : 0)-\(searchQuery)")
+        .id("\(source.rawValue)-\(source == .toplist ? toplistPeriod : 0)-\(searchQuery.render())")
     }
 }

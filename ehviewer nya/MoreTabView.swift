@@ -40,6 +40,10 @@ struct MoreTabView: View {
             .navigationDestination(for: TagSearchDestination.self) { dest in
                 GalleryListView(mode: .tag(keyword: dest.tag), isPushed: true)
             }
+            // ★ 画廊详情中点击上传者的 NavigationLink(value: GalleryQueryDestination) 需要此 destination
+            .navigationDestination(for: GalleryQueryDestination.self) { dest in
+                GalleryListView(mode: .search(dest.query), isPushed: true)
+            }
         }
     }
 

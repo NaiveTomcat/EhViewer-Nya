@@ -23,6 +23,7 @@ import UIKit
 import AppKit
 #endif
 @testable import ehviewer_nya
+import EhModels
 
 @MainActor
 struct ReaderStallTests {
@@ -77,24 +78,38 @@ struct ReaderStallTests {
 /// 带命名空间的标签此前是原样透传的：`female:big ass` 里的空格把它拆成
 /// `female:big` 和 `ass` 两个词，搜不到任何结果。而不含空格的标签
 /// （`parody:haikyuu!!`）恰好是好的，所以这个 bug 只在一部分标签上出现。
+/// 现在统一由 SearchTerm 渲染，命名空间用短前缀（f: / p:，E-Hentai 会映射回全称）。
 @MainActor
 struct TagQueryTests {
 
     @Test func namespacedTagWithSpaceIsQuoted() {
-        #expect(GalleryListView.exactTagQuery(for: "female:big ass") == "female:\"big ass$\"")
+        #expect(SearchTerm.makeTag("female:big ass").render() == "f:\"big ass$\"")
     }
 
     @Test func bareTagIsQuoted() {
-        #expect(GalleryListView.exactTagQuery(for: "big ass") == "\"big ass$\"")
+        #expect(SearchTerm.makeTag("big ass").render() == "\"big ass$\"")
     }
 
     @Test func namespacedTagWithoutSpaceStillQuoted() {
-        #expect(GalleryListView.exactTagQuery(for: "parody:haikyuu!!") == "parody:\"haikyuu!!$\"")
+        #expect(SearchTerm.makeTag("parody:haikyuu!!").render() == "p:\"haikyuu!!$\"")
     }
 
     /// 冒号在开头或结尾时不拆，整体当成裸标签处理，别拼出 `:"..."` 这种废式子
     @Test func degenerateColonsFallBackToBareForm() {
-        #expect(GalleryListView.exactTagQuery(for: ":x") == "\":x$\"")
-        #expect(GalleryListView.exactTagQuery(for: "x:") == "\"x:$\"")
+        #expect(SearchTerm.makeTag(":x").render() == "\":x$\"")
+        #expect(SearchTerm.makeTag("x:").render() == "\"x:$\"")
+    }
+
+    /// 上传者渲染成独立命名空间，能与标签并列组合。
+    @Test func uploaderRendersAsNamespace() {
+        #expect(SearchQuery(terms: [.makeUploader("rrr1361")]).render() == "uploader:\"rrr1361\"")
+        let combined = SearchQuery(terms: [.makeUploader("rrr1361"), .makeTag("female:big ass")])
+        #expect(combined.render() == "uploader:\"rrr1361\" f:\"big ass$\"")
+    }
+
+    /// 解析回环：渲染出来的查询串再解析回去应当渲染一致。
+    @Test func parseRoundTripsUploader() {
+        let query = SearchQuery.parse("uploader:\"rrr1361\" f:\"big ass$\"")
+        #expect(query.render() == "uploader:\"rrr1361\" f:\"big ass$\"")
     }
 }

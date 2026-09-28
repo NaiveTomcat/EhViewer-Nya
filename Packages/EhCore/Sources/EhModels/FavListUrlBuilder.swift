@@ -47,13 +47,11 @@ public struct FavListUrlBuilder: Sendable, Codable {
 
         // 搜索关键词
         if let kw = keyword, !kw.isEmpty {
-            if let encoded = kw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                params.append("f_search=\(encoded)")
-                // 搜索范围: Name / Tags / Note (对齐 Android)
-                params.append("sn=on")
-                params.append("st=on")
-                params.append("sf=on")
-            }
+            params.append("f_search=\(SearchQueryEncoder.encodeValue(kw))")
+            // 搜索范围: Name / Tags / Note (对齐 Android)
+            params.append("sn=on")
+            params.append("st=on")
+            params.append("sf=on")
         }
 
         // 分页
