@@ -8,7 +8,7 @@ for Live Activity / Dynamic Island support.
 import re
 import sys
 
-PBXPROJ_PATH = sys.argv[1] if len(sys.argv) > 1 else "ehviewer apple.xcodeproj/project.pbxproj"
+PBXPROJ_PATH = sys.argv[1] if len(sys.argv) > 1 else "ehviewer nya.xcodeproj/project.pbxproj"
 
 with open(PBXPROJ_PATH, 'r') as f:
     content = f.read()
@@ -136,16 +136,16 @@ content = content.replace(
 old_products = f"""\t\t{ID_PRODUCTS} /* Products */ = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-\t\t\t\tDC4A07682F3DA21800717C38 /* ehviewer apple.app */,
-\t\t\t\tDC4A07792F3DA21800717C38 /* ehviewer appleTests.xctest */,
-\t\t\t\tDC4A07832F3DA21800717C38 /* ehviewer appleUITests.xctest */,
+\t\t\t\tDC4A07682F3DA21800717C38 /* ehviewer nya.app */,
+\t\t\t\tDC4A07792F3DA21800717C38 /* ehviewer nyaTests.xctest */,
+\t\t\t\tDC4A07832F3DA21800717C38 /* ehviewer nyaUITests.xctest */,
 \t\t\t);"""
 new_products = f"""\t\t{ID_PRODUCTS} /* Products */ = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-\t\t\t\tDC4A07682F3DA21800717C38 /* ehviewer apple.app */,
-\t\t\t\tDC4A07792F3DA21800717C38 /* ehviewer appleTests.xctest */,
-\t\t\t\tDC4A07832F3DA21800717C38 /* ehviewer appleUITests.xctest */,
+\t\t\t\tDC4A07682F3DA21800717C38 /* ehviewer nya.app */,
+\t\t\t\tDC4A07792F3DA21800717C38 /* ehviewer nyaTests.xctest */,
+\t\t\t\tDC4A07832F3DA21800717C38 /* ehviewer nyaUITests.xctest */,
 \t\t\t\t{ID_PRODUCT_REF} /* EhDownloadWidget.appex */,
 \t\t\t);"""
 content = content.replace(old_products, new_products)
@@ -154,16 +154,16 @@ content = content.replace(old_products, new_products)
 old_root = f"""\t\t{ID_MAIN_GROUP} = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-\t\t\t\tDC4A076A2F3DA21800717C38 /* ehviewer apple */,
-\t\t\t\tDC4A07862F3DA21800717C38 /* ehviewer appleUITests */,
+\t\t\t\tDC4A076A2F3DA21800717C38 /* ehviewer nya */,
+\t\t\t\tDC4A07862F3DA21800717C38 /* ehviewer nyaUITests */,
 \t\t\t\t{ID_PRODUCTS} /* Products */,
 \t\t\t);"""
 new_root = f"""\t\t{ID_MAIN_GROUP} = {{
 \t\t\tisa = PBXGroup;
 \t\t\tchildren = (
-\t\t\t\tDC4A076A2F3DA21800717C38 /* ehviewer apple */,
+\t\t\t\tDC4A076A2F3DA21800717C38 /* ehviewer nya */,
 \t\t\t\t{ID_SYNC_GROUP} /* EhDownloadWidget */,
-\t\t\t\tDC4A07862F3DA21800717C38 /* ehviewer appleUITests */,
+\t\t\t\tDC4A07862F3DA21800717C38 /* ehviewer nyaUITests */,
 \t\t\t\t{ID_PRODUCTS} /* Products */,
 \t\t\t);"""
 content = content.replace(old_root, new_root)
@@ -206,14 +206,14 @@ content = content.replace(
 # Add target to project targets list
 content = content.replace(
     f"""\t\t\ttargets = (
-\t\t\t\t{ID_APP_TARGET} /* ehviewer apple */,
-\t\t\t\tDC4A07782F3DA21800717C38 /* ehviewer appleTests */,
-\t\t\t\tDC4A07822F3DA21800717C38 /* ehviewer appleUITests */,
+\t\t\t\t{ID_APP_TARGET} /* ehviewer nya */,
+\t\t\t\tDC4A07782F3DA21800717C38 /* ehviewer nyaTests */,
+\t\t\t\tDC4A07822F3DA21800717C38 /* ehviewer nyaUITests */,
 \t\t\t);""",
     f"""\t\t\ttargets = (
-\t\t\t\t{ID_APP_TARGET} /* ehviewer apple */,
-\t\t\t\tDC4A07782F3DA21800717C38 /* ehviewer appleTests */,
-\t\t\t\tDC4A07822F3DA21800717C38 /* ehviewer appleUITests */,
+\t\t\t\t{ID_APP_TARGET} /* ehviewer nya */,
+\t\t\t\tDC4A07782F3DA21800717C38 /* ehviewer nyaTests */,
+\t\t\t\tDC4A07822F3DA21800717C38 /* ehviewer nyaUITests */,
 \t\t\t\t{ID_TARGET} /* EhDownloadWidget */,
 \t\t\t);"""
 )
@@ -232,9 +232,9 @@ content = content.replace(
 )
 
 # Add embed phase + dependency to app target build phases
-old_app_phases = f"""\t\t{ID_APP_TARGET} /* ehviewer apple */ = {{
+old_app_phases = f"""\t\t{ID_APP_TARGET} /* ehviewer nya */ = {{
 \t\t\tisa = PBXNativeTarget;
-\t\t\tbuildConfigurationList = DC4A078C2F3DA21800717C38 /* Build configuration list for PBXNativeTarget "ehviewer apple" */;
+\t\t\tbuildConfigurationList = DC4A078C2F3DA21800717C38 /* Build configuration list for PBXNativeTarget "ehviewer nya" */;
 \t\t\tbuildPhases = (
 \t\t\t\tDC4A07642F3DA21800717C38 /* Sources */,
 \t\t\t\tDC4A07652F3DA21800717C38 /* Frameworks */,
@@ -244,9 +244,9 @@ old_app_phases = f"""\t\t{ID_APP_TARGET} /* ehviewer apple */ = {{
 \t\t\t);
 \t\t\tdependencies = (
 \t\t\t);"""
-new_app_phases = f"""\t\t{ID_APP_TARGET} /* ehviewer apple */ = {{
+new_app_phases = f"""\t\t{ID_APP_TARGET} /* ehviewer nya */ = {{
 \t\t\tisa = PBXNativeTarget;
-\t\t\tbuildConfigurationList = DC4A078C2F3DA21800717C38 /* Build configuration list for PBXNativeTarget "ehviewer apple" */;
+\t\t\tbuildConfigurationList = DC4A078C2F3DA21800717C38 /* Build configuration list for PBXNativeTarget "ehviewer nya" */;
 \t\t\tbuildPhases = (
 \t\t\t\tDC4A07642F3DA21800717C38 /* Sources */,
 \t\t\t\tDC4A07652F3DA21800717C38 /* Frameworks */,

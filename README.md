@@ -1,4 +1,4 @@
-# EhViewer-Apple
+# EhViewer-Nya
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.1.0-brightgreen" alt="Version"/>
@@ -107,16 +107,16 @@ macOS 侧仍要求 26.0+，未随本次一起下调。
 ## 从源码构建
 
 ```bash
-git clone https://github.com/felixchaos/EhViewer-Apple.git
-cd EhViewer-Apple
-open "ehviewer apple.xcodeproj"
+git clone https://github.com/ShiroiTree/EhViewer-Nya.git
+cd EhViewer-Nya
+open "ehviewer nya.xcodeproj"
 ```
 
 首次打开会自动解析 Swift Package 依赖，可能需要几分钟。
 
 ### 在 Mac 上运行
 
-选择 `ehviewer apple` scheme，目标设备选 **My Mac**，按 `⌘R`。
+选择 `ehviewer nya` scheme，目标设备选 **My Mac**，按 `⌘R`。
 
 ### 安装到 iPhone / iPad
 
@@ -161,7 +161,7 @@ APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
 **运行**：
 
 ```bash
-cd "ehviewer apple"
+cd "ehviewer nya"
 ./distribute_mac.sh
 ```
 
@@ -176,8 +176,8 @@ Developer ID 证书有效期 1 年，到期在 Xcode 里续签后重新运行即
 App 层只放视图，业务逻辑全部下沉到 `Packages/` 下的本地 Swift Package，各模块可独立编译和测试。
 
 ```
-EhViewer-Apple/
-├── ehviewer apple/              # 主 App：SwiftUI 视图层
+EhViewer-Nya/
+├── ehviewer nya/                # 主 App：SwiftUI 视图层
 ├── Packages/
 │   ├── EhCore/
 │   │   ├── EhModels/            # 数据模型、URL 构建器
@@ -191,13 +191,13 @@ EhViewer-Apple/
 │   ├── EhSpider/                # 图片抓取与本地存储
 │   ├── EhDownload/              # 下载队列
 │   └── EhUI/                    # 复用组件
-└── ehviewer apple.xcodeproj/
+└── ehviewer nya.xcodeproj/
 ```
 
 跑测试：
 
 ```bash
-xcodebuild test -project "ehviewer apple.xcodeproj" -scheme "ehviewer apple" \
+xcodebuild test -project "ehviewer nya.xcodeproj" -scheme "ehviewer nya" \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 

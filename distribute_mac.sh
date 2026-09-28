@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 #
-# distribute_mac.sh — EhViewer-Apple macOS 自动构建 + 签名 + 公证 + DMG 打包
+# distribute_mac.sh — EhViewer-Nya macOS 自动构建 + 签名 + 公证 + DMG 打包
 #
 # 用法:
 #   ./distribute_mac.sh
@@ -14,7 +14,7 @@
 #        APP_SPECIFIC_PASSWORD — App 专用密码
 #
 # 输出:
-#   build/EhViewer-Apple-<version>.dmg  — 已公证、可直接分发的安装包
+#   build/EhViewer-Nya-<version>.dmg  — 已公证、可直接分发的安装包
 #
 
 set -euo pipefail
@@ -35,9 +35,9 @@ fail()    { echo "${RED}[✘]${NC} $*" >&2; exit 1; }
 # ─────────────────────────── 项目常量 ───────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
-PROJECT_FILE="$PROJECT_DIR/ehviewer apple.xcodeproj"
-SCHEME="ehviewer apple"
-APP_NAME="ehviewer apple"
+PROJECT_FILE="$PROJECT_DIR/ehviewer nya.xcodeproj"
+SCHEME="ehviewer nya"
+APP_NAME="ehviewer nya"
 BUNDLE_ID="Stellatrix.ehviewer-apple"
 
 BUILD_DIR="$PROJECT_DIR/build"
@@ -172,7 +172,7 @@ deep_codesign() {
 
     # 对 .app 整体深度签名
     codesign --force --deep --options runtime --timestamp \
-        --entitlements "$PROJECT_DIR/ehviewer apple/ehviewer_apple.entitlements" \
+        --entitlements "$PROJECT_DIR/ehviewer nya/ehviewer_nya.entitlements" \
         --sign "$SIGNING_IDENTITY" \
         "$APP_PATH"
 
@@ -189,7 +189,7 @@ create_dmg() {
     local version
     version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "1.0.0")
 
-    local dmg_name="EhViewer-Apple-${version}.dmg"
+    local dmg_name="EhViewer-Nya-${version}.dmg"
     local dmg_path="$BUILD_DIR/$dmg_name"
     local dmg_temp="$BUILD_DIR/${dmg_name%.dmg}-temp.dmg"
 
@@ -347,7 +347,7 @@ final_verify() {
 # ─────────────────────────── 主流程 ───────────────────────────
 main() {
     echo ""
-    echo "${BOLD}🍎 EhViewer-Apple macOS 分发构建${NC}"
+    echo "${BOLD}🍎 EhViewer-Nya macOS 分发构建${NC}"
     echo "${BOLD}════════════════════════════════${NC}"
     echo ""
 

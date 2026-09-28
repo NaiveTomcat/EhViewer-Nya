@@ -149,11 +149,11 @@ Line 750: saveParseErrorBody 未被解析器读取
 
 ```bash
 # 列出所有 TODO
-grep -rn "// TODO:" "ehviewer apple/ehviewer apple/" --include="*.swift"
+grep -rn "// TODO:" "ehviewer nya/" --include="*.swift"
 
 # 列出所有硬编码中文
-grep -rn 'Text("[^"]*[\x{4e00}-\x{9fff}]' "ehviewer apple/ehviewer apple/" --include="*.swift"
+grep -rn 'Text("[^"]*[\x{4e00}-\x{9fff}]' "ehviewer nya/" --include="*.swift"
 
 # 列出残留 print()  (排除 debugLog)
-grep -rn 'print(' "ehviewer apple/ehviewer apple/" --include="*.swift" | grep -v debugLog | grep -v LogManager | grep -v '#Preview'
+grep -rn 'print(' "ehviewer nya/" --include="*.swift" | grep -v debugLog | grep -v LogManager | grep -v '#Preview'
 ```

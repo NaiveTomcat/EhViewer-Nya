@@ -1,18 +1,18 @@
 # 贡献指南
 
-感谢你对 EhViewer-Apple 的关注！我们欢迎各种形式的贡献。
+感谢你对 EhViewer-Nya 的关注！我们欢迎各种形式的贡献。
 
 ## 🚀 如何贡献
 
 ### 报告 Bug
 
-1. 在 [Issues](https://github.com/felixchaos/EhViewer-Apple/issues) 页面搜索是否已有相同问题
+1. 在 [Issues](https://github.com/ShiroiTree/EhViewer-Nya/issues) 页面搜索是否已有相同问题
 2. 如果没有，创建新 Issue 并使用 **Bug Report** 模板
 3. 尽可能提供详细信息：设备型号、系统版本、复现步骤、截图/录屏
 
 ### 功能建议
 
-1. 在 [Issues](https://github.com/felixchaos/EhViewer-Apple/issues) 页面创建新 Issue
+1. 在 [Issues](https://github.com/ShiroiTree/EhViewer-Nya/issues) 页面创建新 Issue
 2. 使用 **Feature Request** 模板
 3. 描述你期望的功能和使用场景
 
@@ -77,9 +77,9 @@ docs: 更新 README 安装说明
 ### 本地开发
 
 ```bash
-git clone https://github.com/felixchaos/EhViewer-Apple.git
-cd EhViewer-Apple
-open "ehviewer apple.xcodeproj"
+git clone https://github.com/ShiroiTree/EhViewer-Nya.git
+cd EhViewer-Nya
+open "ehviewer nya.xcodeproj"
 ```
 
 ## 🔍 代码规范
@@ -120,7 +120,7 @@ open "ehviewer apple.xcodeproj"
 
 ## ❓ 有问题？
 
-- 开一个 [Discussion](https://github.com/felixchaos/EhViewer-Apple/discussions) 或 Issue
+- 开一个 [Discussion](https://github.com/ShiroiTree/EhViewer-Nya/discussions) 或 Issue
 - 注明你的环境信息（Xcode 版本、系统版本等）
 
 再次感谢你的贡献！ ❤️

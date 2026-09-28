@@ -24,8 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SCHEME: "ehviewer apple"
-  PROJECT: "ehviewer apple.xcodeproj"
+  SCHEME: "ehviewer nya"
+  PROJECT: "ehviewer nya.xcodeproj"
   BUNDLE_ID: "Stellatrix.ehviewer-apple"
   TEAM_ID: "HWZEUNLCY6"
   ARCHIVE_PATH: build/EhViewer.xcarchive
@@ -230,7 +230,7 @@ jobs:
       - name: Extract version info
         id: version
         run: |
-          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/ehviewer apple.app/Info.plist"
+          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/ehviewer nya.app/Info.plist"
           if [ ! -f "$PLIST_PATH" ]; then
             # fallback: 从项目读取
             VERSION="1.0.0"
