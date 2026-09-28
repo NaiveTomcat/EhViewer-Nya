@@ -26,6 +26,12 @@ struct EhViewerApp: App {
     #endif
 
     init() {
+        #if DEBUG
+        // 必须早于下面所有读取本地状态的动作：清了钥匙串再 ensureCredentialsRestored，
+        // 顺序反了就是先把凭据恢复出来、再被清掉
+        DebugStorageReset.runIfRequested()
+        #endif
+
         // ⚠️ 必须是启动时的第一件事：把钥匙串里的登录凭据同步放回 Cookie 罐。
         //
         // 认证 Cookie 现在是会话 Cookie（不落盘），进程重启后罐子里是空的，
