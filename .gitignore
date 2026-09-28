@@ -57,3 +57,7 @@ generate_icons.py
 
 # Default profiling data
 default.profraw
+
+# Claude Code
+
+.claude/*
