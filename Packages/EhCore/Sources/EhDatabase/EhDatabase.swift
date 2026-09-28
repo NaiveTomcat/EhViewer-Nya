@@ -11,8 +11,9 @@ public final class EhDatabase: Sendable {
             return try EhDatabase()
         } catch {
             print("[EhDatabase] 初始化失败: \(error)")
-            let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let dbPath = docsDir.appendingPathComponent("eh.sqlite").path
+            let dbURL = EhDatabase.databaseURL
+            let dbDir = dbURL.deletingLastPathComponent()
+            let dbPath = dbURL.path
 
             // 只有真的是文件损坏才允许重建。
             //
@@ -29,7 +30,7 @@ public final class EhDatabase: Sendable {
             }
 
             // 备份损坏的数据库（保留最近一次，用户可自行恢复）
-            let backupPath = docsDir.appendingPathComponent("eh.sqlite.corrupted_backup").path
+            let backupPath = dbDir.appendingPathComponent("eh.sqlite.corrupted_backup").path
             try? FileManager.default.removeItem(atPath: backupPath) // 清理旧备份
             let backedUp: Bool
             do {
@@ -84,6 +85,49 @@ public final class EhDatabase: Sendable {
         }
     }
 
+    // MARK: - 数据库位置
+
+    /// `Application Support/<bundleID>/database/eh.sqlite`
+    ///
+    /// 不再放 Documents：macOS 未开沙盒时它等于真实的 `~/Documents`，
+    /// 一个 sqlite（连同 -wal / -shm）散在用户的文稿目录里既碍眼，
+    /// 也不符合 Apple 对「非用户可见的 App 数据」的位置约定。
+    private static var databaseURL: URL {
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = base
+            .appendingPathComponent(
+                Bundle.main.bundleIdentifier ?? "io.github.ShiroiTree.Ehviewer-Nya",
+                isDirectory: true
+            )
+            .appendingPathComponent("database", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("eh.sqlite")
+        migrateLegacyDatabaseIfNeeded(to: url)
+        return url
+    }
+
+    /// 老版本把库写在 Documents，升级后第一次启动把它连同 WAL/SHM 一起搬到新位置。
+    ///
+    /// 靠「新路径不存在 + 旧路径存在」判断，天然幂等，不需要额外的 flag。
+    /// 用 move 而不是 copy：搬完 Documents 里就不该再有它。
+    private static func migrateLegacyDatabaseIfNeeded(to newURL: URL) {
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: newURL.path),
+              let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+        else { return }
+        let legacy = docs.appendingPathComponent("eh.sqlite")
+        guard fm.fileExists(atPath: legacy.path) else { return }
+
+        // 此刻数据库还没打开，直接搬文件是安全的
+        for suffix in ["", "-wal", "-shm"] {
+            let src = URL(fileURLWithPath: legacy.path + suffix)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            try? fm.moveItem(at: src, to: URL(fileURLWithPath: newURL.path + suffix))
+        }
+        NSLog("[EhDatabase] 已迁移旧数据库: Documents → Application Support")
+    }
+
     /// 标记是否处于降级模式（内存数据库，重启后数据丢失）
     public let isDegraded: Bool
 
@@ -110,9 +154,7 @@ public final class EhDatabase: Sendable {
         if inMemory {
             dbQueue = try DatabaseQueue(configuration: config)
         } else {
-            let dbPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-                .first!.appendingPathComponent("eh.sqlite").path
-            dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+            dbQueue = try DatabaseQueue(path: Self.databaseURL.path, configuration: config)
         }
         try migrator.migrate(dbQueue)
     }
