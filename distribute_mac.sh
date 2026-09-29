@@ -6,7 +6,7 @@
 #   ./distribute_mac.sh
 #
 # 前置条件:
-#   1. 已安装 Xcode 16+ 并登录 Apple Developer 账号
+#   1. 已安装 Xcode 26+ 并登录 Apple Developer 账号
 #   2. Keychain 中已导入 "Developer ID Application" 证书
 #   3. 配置环境变量（直接 export 或写入 .env 文件）:
 #        APPLE_ID           — Apple 开发者账号邮箱
@@ -38,7 +38,7 @@ PROJECT_DIR="$SCRIPT_DIR"
 PROJECT_FILE="$PROJECT_DIR/ehviewer nya.xcodeproj"
 SCHEME="ehviewer nya"
 APP_NAME="ehviewer nya"
-BUNDLE_ID="Stellatrix.ehviewer-apple"
+BUNDLE_ID="io.github.ShiroiTree.Ehviewer-Nya"
 
 BUILD_DIR="$PROJECT_DIR/build"
 ARCHIVE_PATH="$BUILD_DIR/${APP_NAME}.xcarchive"
@@ -49,7 +49,7 @@ DMG_DIR="$BUILD_DIR/dmg_staging"
 # ─────────────────────────── 加载环境变量 ───────────────────────────
 load_env() {
     # 按优先级: 当前目录 .env → 项目目录 .env
-    local env_files=("$PWD/.env" "$PROJECT_DIR/.env" "$HOME/.ehviewer-apple.env")
+    local env_files=("$PWD/.env" "$PROJECT_DIR/.env" "$HOME/.ehviewer-nya.env")
     for f in "${env_files[@]}"; do
         if [[ -f "$f" ]]; then
             info "从 $f 加载环境变量"
@@ -203,7 +203,7 @@ create_dmg() {
     ln -s /Applications "$DMG_DIR/Applications"
 
     # 创建临时可写 DMG
-    local vol_name="EhViewer Apple"
+    local vol_name="EhViewer Nya"
     hdiutil create -ov -srcfolder "$DMG_DIR" -volname "$vol_name" \
         -fs HFS+ -fsargs "-c c=64,a=16,e=16" \
         -format UDRW "$dmg_temp" 2>/dev/null
@@ -327,7 +327,7 @@ final_verify() {
     echo "${GREEN}${BOLD}  ✅ 构建完成！${NC}"
     echo "${BOLD}═══════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo "  应用名称:   EhViewer Apple"
+    echo "  应用名称:   EhViewer-Nya"
     echo "  版本号:     ${version}"
     echo "  Bundle ID:  ${BUNDLE_ID}"
     echo "  文件大小:   ${size}"

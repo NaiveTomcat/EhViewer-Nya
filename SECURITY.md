@@ -4,7 +4,7 @@
 
 **请不要通过公开 issue 报告安全问题。**
 
-请使用 GitHub 的[私密漏洞报告](https://github.com/felixchaos/EhViewer-Apple/security/advisories/new)——报告只有维护者可见，修复发布前不会公开。
+请使用 GitHub 的[私密漏洞报告](https://github.com/ShiroiTree/EhViewer-Nya/security/advisories/new)——报告只有维护者可见，修复发布前不会公开。
 
 报告时请尽量包含：
 
@@ -22,8 +22,8 @@
 
 | 版本 | 状态 |
 |------|------|
-| 1.3.x | 支持 |
-| 1.2.x 及更早 | 不再维护 |
+| 0.1.x | 支持 |
+| 上游 EhViewer-Apple 的版本线 | 不在本仓库的维护范围 |
 
 ## 已知的安全特性与限制
 
@@ -62,7 +62,7 @@ Mac 版以 `com.apple.security.app-sandbox = false` 构建。它启用了 Harden
 
 ### 关于自签安装
 
-从 Releases 下载的 `.ipa` 由维护者的 Apple Distribution 证书签名，可用 `codesign -dv` 校验签名主体为 `Apple Distribution: Felix Chaos (HWZEUNLCY6)`。
+从 Releases 下载的 `.ipa` 由维护者的 Apple Distribution 证书签名，可用 `codesign -dv` 查看签名主体，与 Releases 页面注明的 Team ID 核对。
 
 用 AltStore / Sideloadly 重签后，原签名会被完全剥离并替换为你自己的证书——此后签名只能证明「是你签的」，无法再用于校验来源。**请务必从本仓库的 Releases 页面下载，不要使用第三方转发的安装包。**
 

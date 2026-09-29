@@ -2,6 +2,58 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+> 本仓库 fork 自 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple)。
+> **版本号从 0.1.0 重新起算，与上游的版本线无关**——上游也有一个 0.1.0，两者不是同一个东西。
+> fork 之前的更新记录折叠在文末「上游历史」里。
+
+## [0.1.0] - 2026-09-28
+
+Fork 之后的首次发布。重心是界面重做，以及搜索与代理两块逻辑的重写。
+
+### 🍴 仓库更名
+
+- **上游文件全部更名** — 工程、scheme 与源码目录由 `ehviewer apple` 改为 `ehviewer nya`，
+  Bundle ID 改为 `io.github.ShiroiTree.Ehviewer-Nya`
+- **改为双许可** — fork 之后新增的文件采用 [MIT](LICENSE-MIT)，
+  继承自上游的文件继续沿用 [Apache License 2.0](LICENSE)
+
+### 🔍 搜索重写
+
+- **标签统一化** — 原先各入口各写一套标签拼装，不支持 `uploader:` 搜索、多标签搜索等写法。
+  改为所有标签走同一套规范化与拼装逻辑，个性化搜索写法都能正确落到 URL
+- **搜索独立成页** — 新增 `SavedSearchView`，搜索与已保存的检索条件不再挤在主列表里
+
+### 🌐 代理
+
+- **配置代理后实时生效** — 下载管理器持有的 session 改为非持久化，改完代理无需重启 App
+- **新增 App 内代理设置页** — 对齐 Android 的 ProxyPreference，手动模式即时生效
+
+### 🖥️ 界面与数据
+
+- **重写 NSFW 警告页与站点选择页**
+- **macOS 窗口表现** — 调整默认窗口尺寸，去掉部分界面切换时的 resize 抖动
+- **macOS 数据库迁出 `Documents` 目录**
+
+### 🛠️ 构建与开发
+
+- **新增 Debug / Release 两个构建选项** — Debug 构建启动时清空本地数据，从默认状态进入 App，
+  便于复现首次启动路径
+
+### 📄 文档
+
+- README、CONTRIBUTING 更新为本仓库地址与自签安装说明
+- 新增安全策略与 Wiki 入口
+
+---
+
+## 上游历史
+
+以下版本号属于上游 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple) 的版本线，
+随 fork 一并继承，收录于此仅为记录。fork 之后不再跟进该版本线。
+
+<details>
+<summary>展开上游更新记录（1.3.2 → 0.1.0）</summary>
+
 ## [1.3.2] - 2026-09-10
 
 ### 📱 兼容性
@@ -237,3 +289,6 @@
 - Swift Package Manager 模块化架构（EhCore、EhNetwork、EhParser、EhSpider、EhDownload、EhUI）
 - Swift 6 严格并发安全
 - SwiftUI 原生构建
+
+</details>
+

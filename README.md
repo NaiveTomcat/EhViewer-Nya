@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.1.0-brightgreen" alt="Version"/>
-  <img src="https://img.shields.io/badge/platform-iOS%2026.2%2B%20%7C%20macOS%2026%2B-blue" alt="Platform"/>
+  <img src="https://img.shields.io/badge/platform-iOS%2026.0%2B%20%7C%20macOS%2026%2B-blue" alt="Platform"/>
   <img src="https://img.shields.io/badge/swift-6.0-orange" alt="Swift 6.0"/>
   <img src="https://img.shields.io/badge/license-Apache--2.0%20AND%20MIT-green" alt="License"/>
 </p>
@@ -15,9 +15,9 @@
 
 ## 说在前面
 
-该仓库 fork 于上游 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple) 因为上游部分设计与我审美不符，该仓库主要修改界面设计，及部分可能的 bug 修复。
+本仓库 fork 自上游 [EhViewer-Apple](https://github.com/felixchaos/EhViewer-Apple)。因为上游的部分设计不合我的审美，本仓库主要改动界面，以及修复部分 bug。
 
-该项目出于持续开发中，部分文档依旧引用了原始作者的链接，当前版本不对任何文档的表述负责。
+项目仍在持续开发中，文档可能与实现存在出入，遇到不一致以代码为准。
 
 ## 安装
 
@@ -88,19 +88,15 @@ DMG 已用 Developer ID 签名并通过 Apple 公证，票据已植入，断网�
 |------|------|
 | Xcode | 26.0+ |
 | Swift | 6.0 |
-| iOS / iPadOS | 18.0+ |
+| iOS / iPadOS | 26.0+ |
 | macOS | 26.0+ |
 
-构建需要 Xcode 26 / Swift 6，但产物的最低运行版本是 iOS 18.0。代码里没有 iOS 26 独占 API，
-实际用到的最高版本 API 是 `onScrollGeometryChange`（iOS 18）；`@Observable`、`scrollPosition`、
-`ContentUnavailableView` 都是 iOS 17 起就有的。
+**本项目只对 iOS 26.0 及以上负责，工程的最低部署版本就是 26.0。**
 
-> **iOS 18 / 19 尚未经过真机或模拟器测试。** 已验证的只是「以 18.0 为最低版本全量编译通过，
-> 无可用性错误与警告」，SwiftUI 在旧系统上的实际布局与交互行为没有验证过。
-> 遇到问题请开 issue 并附上系统版本。
-
-iOS 17 及更早暂不支持：`@Observable` 需要 iOS 17，且降到 17 需要为浮动 TabBar 的滚动隐藏写降级路径。
-macOS 侧仍要求 26.0+，未随本次一起下调。
+代码里没有 iOS 26 独占 API——用到的最高版本 API 是 `onScrollGeometryChange`（iOS 18），
+所以把部署版本降下来在技术上可行。但 iOS 26 以下的系统没有经过真机或模拟器验证，
+SwiftUI 在旧系统上的布局与交互行为无从保证，**这类问题不在维护范围内**。
+需要稳妥使用，请留在 iOS 26.0 及以上。
 
 ---
 
@@ -154,7 +150,7 @@ security find-identity -v -p codesigning | grep "Developer ID"
 
 ```bash
 APPLE_ID=your-email@example.com
-TEAM_ID=HWZEUNLCY6
+TEAM_ID=XXXXXXXXXX
 APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
 ```
 

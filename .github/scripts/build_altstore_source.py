@@ -20,8 +20,8 @@ import sys
 import urllib.request
 import zipfile
 
-REPO = "felixchaos/EhViewer-Apple"
-BUNDLE_ID = "Stellatrix.ehviewer-apple"
+REPO = "ShiroiTree/EhViewer-Nya"
+BUNDLE_ID = "io.github.ShiroiTree.Ehviewer-Nya"
 
 
 def fetch_releases():
@@ -37,9 +37,10 @@ def fetch_releases():
 
 
 # AltStore / SideStore 用 minOSVersion 判断能否装到当前设备，填错就装不上。
-# 这个值随版本变（1.3.2 起是 18.0，更早是 26.2），所以直接从 ipa 的 Info.plist
-# 里读，而不是写死一个常量——写死过一次，结果 1.3.2 对 iOS 18 用户不可见。
-FALLBACK_MIN_OS = "26.2"
+# 这个值取自工程的 IPHONEOS_DEPLOYMENT_TARGET（现为 26.0），会随版本变化，
+# 所以直接从 ipa 的 Info.plist 里读，而不是写死一个常量——写死过一次，
+# 结果清单里的门槛与包里的实际值对不上。
+FALLBACK_MIN_OS = "26.0"
 
 
 def min_os_version(ipa_url):
@@ -107,24 +108,24 @@ def main():
         return 1
 
     source = {
-        "name": "EhViewer-Apple",
-        "identifier": "icu.stellatrix.ehviewer",
+        "name": "EhViewer-Nya",
+        "identifier": "io.github.ShiroiTree.Ehviewer-Nya.source",
         "sourceURL": f"https://raw.githubusercontent.com/{REPO}/main/source.json",
         "website": f"https://github.com/{REPO}",
         "apps": [
             {
-                "name": "EhViewer",
+                "name": "EhViewer-Nya",
                 "bundleIdentifier": BUNDLE_ID,
-                "developerName": "Felix Chaos",
+                "developerName": "ShiroiTree",
                 "subtitle": "E-Hentai / ExHentai 画廊客户端",
                 "localizedDescription": (
                     "用 SwiftUI 重写的 E-Hentai / ExHentai 画廊客户端，"
-                    "支持 iPhone、iPad 与 Mac。功能与交互对齐 Android 端的 "
-                    "EhViewer_CN_SXJ。"
+                    "支持 iPhone、iPad 与 Mac。界面在上游 EhViewer-Apple 的"
+                    "基础上重做，搜索与代理逻辑另行重写。"
                 ),
                 "iconURL": (
                     f"https://raw.githubusercontent.com/{REPO}/main/"
-                    "ehviewer%20apple/Assets.xcassets/AppLogo.imageset/AppLogo.png"
+                    "ehviewer%20nya/Assets.xcassets/AppLogo.imageset/AppLogo.png"
                 ),
                 "tintColor": "FFB340",
                 "category": "entertainment",

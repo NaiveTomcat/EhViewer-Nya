@@ -59,9 +59,12 @@ docs: 更新 README 安装说明
 
 ### 环境要求
 
-- **Xcode 16.0+**
+- **Xcode 26.0+**
 - **Swift 6.0**
-- **iOS 17.0+** / **macOS 14.0+**
+- **iOS 26.0+** / **macOS 26.0+**
+
+构建需要 Xcode 26 / Swift 6，工程的最低部署版本是 iOS 26.0。细节见
+[README 的环境要求](README.md#环境要求)。
 
 ### 项目架构
 

@@ -1,10 +1,10 @@
 # ────────────────────────────────────────────────────────────
-#  EhViewer Apple — Ad-Hoc 构建 & 部署流水线
-#  触发: 打版本 tag / 手动 dispatch
-#  目标: RackNerd (Stellatrix.icu) → itms-services 安装
+#  EhViewer-Nya — iOS 构建 & 发布流水线
+#  触发: 打版本 tag (v*) / 手动 dispatch
+#  产物: IPA 附到 GitHub Release；手动 dispatch 时仅存为 artifact
 # ────────────────────────────────────────────────────────────
 
-name: Build & Deploy iOS (Ad-Hoc)
+name: Build & Release iOS
 
 # 这是发布流水线，不是持续集成——每次 push 都签一个包既无必要，
 # 失败时还会按 push 频率发失败邮件。日常校验交给 build.yml。
@@ -23,17 +23,21 @@ concurrency:
   group: deploy-ios-${{ github.ref }}
   cancel-in-progress: true
 
+# 建 Release 与回写 source.json 都需要写权限
+permissions:
+  contents: write
+
 env:
   SCHEME: "ehviewer nya"
   PROJECT: "ehviewer nya.xcodeproj"
-  BUNDLE_ID: "Stellatrix.ehviewer-apple"
-  TEAM_ID: "HWZEUNLCY6"
-  ARCHIVE_PATH: build/EhViewer.xcarchive
+  BUNDLE_ID: "io.github.ShiroiTree.Ehviewer-Nya"
+  TEAM_ID: "8S29RP4LW7"
+  ARCHIVE_PATH: build/EhViewer-Nya.xcarchive
   IPA_DIR: build/ipa
   EXPORT_OPTIONS: build/ExportOptions.plist
 
 jobs:
-  build-and-deploy:
+  build-and-release:
     runs-on: macos-latest
     timeout-minutes: 30
 
@@ -161,7 +165,7 @@ jobs:
             <key>destination</key>
             <string>export</string>
             <key>teamID</key>
-            <string>HWZEUNLCY6</string>
+            <string>8S29RP4LW7</string>
             <key>compileBitcode</key>
             <false/>
             <key>stripSwiftSymbols</key>
@@ -200,7 +204,31 @@ jobs:
           echo "✅ Archive complete"
           ls -la "$ARCHIVE_PATH"
 
-      # ─── 6. Export IPA ──────────────────────────────────────
+      # ─── 6. 读取版本信息 ────────────────────────────────────
+      # 放在导出之前，导出时才能用版本号命名 IPA。
+      - name: Extract version info
+        id: version
+        run: |
+          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/ehviewer nya.app/Info.plist"
+          if [ ! -f "$PLIST_PATH" ]; then
+            echo "::error::归档里找不到主 App 的 Info.plist: $PLIST_PATH"
+            exit 1
+          fi
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST_PATH")
+          BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST_PATH")
+          DATE=$(date +%Y%m%d)
+          TITLE="EhViewer-Nya v${VERSION} (${BUILD_NUM}) - ${DATE}"
+          if [ -n "${{ github.event.inputs.build_note }}" ]; then
+            TITLE="${TITLE} - ${{ github.event.inputs.build_note }}"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "📦 $TITLE"
+
+      # ─── 7. Export IPA ──────────────────────────────────────
       - name: Export IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -215,145 +243,55 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-          # 重命名为固定文件名
           IPA_FILE=$(find "$IPA_DIR" -name "*.ipa" | head -1)
           if [ -z "$IPA_FILE" ]; then
-            echo "❌ No IPA file found!"
+            echo "::error::导出目录里没有 .ipa"
             exit 1
           fi
-          mv "$IPA_FILE" "$IPA_DIR/EhViewer.ipa"
+          IPA_NAME="EhViewer-Nya-${{ steps.version.outputs.version }}.ipa"
+          mv "$IPA_FILE" "$IPA_DIR/$IPA_NAME"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
 
           echo "✅ IPA exported"
-          ls -lh "$IPA_DIR/EhViewer.ipa"
+          ls -lh "$IPA_DIR/$IPA_NAME"
 
-      # ─── 7. 生成版本信息 ────────────────────────────────────
-      - name: Extract version info
-        id: version
-        run: |
-          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/ehviewer nya.app/Info.plist"
-          if [ ! -f "$PLIST_PATH" ]; then
-            # fallback: 从项目读取
-            VERSION="1.0.0"
-            BUILD_NUM="1"
-          else
-            VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST_PATH")
-            BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST_PATH")
-          fi
-          DATE=$(date +%Y%m%d)
-          TITLE="EhViewer v${VERSION} (${BUILD_NUM}) - ${DATE}"
-          if [ -n "${{ github.event.inputs.build_note }}" ]; then
-            TITLE="${TITLE} - ${{ github.event.inputs.build_note }}"
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build=$BUILD_NUM" >> "$GITHUB_OUTPUT"
-          echo "date=$DATE" >> "$GITHUB_OUTPUT"
-          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
-          echo "📦 $TITLE"
-
-      # ─── 8. 生成 manifest.plist ─────────────────────────────
-      - name: Generate manifest.plist
-        run: |
-          cat > "$IPA_DIR/manifest.plist" << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>items</key>
-            <array>
-              <dict>
-                <key>assets</key>
-                <array>
-                  <dict>
-                    <key>kind</key>
-                    <string>software-package</string>
-                    <key>url</key>
-                    <string>https://ios.stellatrix.icu/EhViewer.ipa</string>
-                  </dict>
-                </array>
-                <key>metadata</key>
-                <dict>
-                  <key>bundle-identifier</key>
-                  <string>${{ env.BUNDLE_ID }}</string>
-                  <key>bundle-version</key>
-                  <string>${{ steps.version.outputs.version }}</string>
-                  <key>kind</key>
-                  <string>software</string>
-                  <key>title</key>
-                  <string>${{ steps.version.outputs.title }}</string>
-                </dict>
-              </dict>
-            </array>
-          </dict>
-          </plist>
-          EOF
-
-          echo "✅ manifest.plist generated"
-          cat "$IPA_DIR/manifest.plist"
-
-      # ─── 9. 留存产物 ────────────────────────────────────────
-      # 先于部署执行：服务器凭据是可选的，但包必须无条件拿得到，
-      # 否则一次成功的构建会因为部署失败而白跑。
+      # ─── 8. 留存产物 ────────────────────────────────────────
+      # 手动 dispatch 没有 tag，不会建 Release，靠 artifact 取包。
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EhViewer-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
-          path: |
-            build/ipa/EhViewer.ipa
-            build/ipa/manifest.plist
+          name: EhViewer-Nya-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+          path: build/ipa/*.ipa
           retention-days: 30
           if-no-files-found: error
 
-      # ─── 10. 部署到 Stellatrix 服务器 (可选) ────────────────
-      # 未配置 DEPLOY_* 凭据时整体跳过，构建仍算成功。
-      # secrets 上下文在 step 级 if 里不可用，先探测一次落成 output。
-      - name: Check deploy credentials
-        id: deploycfg
+      # ─── 9. 发布到 GitHub Release ───────────────────────────
+      # 只在 tag 触发时发布；重新运行时覆盖同名 Release。
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "$DEPLOY_HOST" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "服务器凭据已配置，将部署到分发服务器"
+          TAG="${{ github.ref_name }}"
+          IPA="$IPA_DIR/$IPA_NAME"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，覆盖其中的 IPA"
+            gh release upload "$TAG" "$IPA" --clobber
           else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "未配置 DEPLOY_* 凭据，跳过服务器部署（IPA 已存为 workflow artifact）"
+            gh release create "$TAG" "$IPA" \
+              --title "${{ steps.version.outputs.title }}" \
+              --generate-notes
           fi
 
-      - name: Deploy to Stellatrix
-        if: steps.deploycfg.outputs.enabled == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT }}
-          source: "build/ipa/EhViewer.ipa,build/ipa/manifest.plist"
-          target: "/var/www/html/ios/"
-          strip_components: 2
+          echo "✅ 已发布: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
 
-      # ─── 11. 服务器后处理 (可选) ────────────────────────────
-      - name: Post-deploy setup
-        if: steps.deploycfg.outputs.enabled == 'true'
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT }}
-          script: |
-            cd /var/www/html/ios/
-            chmod 644 EhViewer.ipa manifest.plist
-            echo "$(date): Deployed ${{ steps.version.outputs.title }}" >> deploy.log
-            echo "✅ Files deployed and permissions set"
-            ls -lh EhViewer.ipa manifest.plist
-
-      # ─── 11.5 刷新 AltStore / SideStore 源清单 ──────────────
+      # ─── 10. 刷新 AltStore / SideStore 源清单 ───────────────
       # iOS 不允许下载执行原生代码，所以没有热更新。「装一次之后自动更新」
       # 靠的是 AltStore / SideStore 的源订阅：用户添加一次源，之后新版本
       # 会出现在它们的更新列表里，用用户自己的证书重签安装。
-      # 清单必须在发布后重新生成，否则新版本不会出现在订阅方。
+      # 必须排在发布之后——清单里的 downloadURL 指向 Release 资产，
+      # 也要重新生成，否则新版本不会出现在订阅方。
       - name: Refresh AltStore source manifest
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -370,42 +308,45 @@ jobs:
             git push origin HEAD:main
           fi
 
-      # ─── 12. 清理钥匙串 ────────────────────────────────────
+      # ─── 11. 清理钥匙串 ────────────────────────────────────
       - name: Cleanup keychain
         if: always()
         run: |
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
-      # ─── 13. 构建摘要 ──────────────────────────────────────
+      # ─── 12. 构建摘要 ──────────────────────────────────────
       - name: Build summary
         if: success()
         run: |
           echo ""
           echo "══════════════════════════════════════════════"
-          echo "  ✅ 构建 & 部署成功"
+          echo "  ✅ 构建完成"
           echo "──────────────────────────────────────────────"
           echo "  版本: ${{ steps.version.outputs.title }}"
           echo "  提交: ${{ github.sha }}"
           echo ""
-          echo "  📲 安装链接:"
-          echo "  https://ios.stellatrix.icu"
-          echo ""
-          echo "  📦 直接安装 (Safari 打开):"
-          echo "  itms-services://?action=download-manifest&url=https://ios.stellatrix.icu/manifest.plist"
+          echo "  📦 Release:"
+          echo "  ${{ github.server_url }}/${{ github.repository }}/releases"
           echo "══════════════════════════════════════════════"
 
           # GitHub Actions Job Summary
+          RELEASE_LINE='手动 dispatch 构建，未建 Release，请从本页 artifact 下载。'
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_LINE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
+          fi
+
           cat >> "$GITHUB_STEP_SUMMARY" << EOF
-          ## 📱 EhViewer iOS 部署成功
+          ## 📱 EhViewer-Nya iOS 构建成功
 
           | 项目 | 值 |
           |------|-----|
           | **版本** | ${{ steps.version.outputs.version }} (${{ steps.version.outputs.build }}) |
           | **日期** | ${{ steps.version.outputs.date }} |
           | **提交** | \`${{ github.sha }}\` |
+          | **Release** | ${RELEASE_LINE} |
 
           ### 安装方式
-          Safari 打开: \`itms-services://?action=download-manifest&url=https://ios.stellatrix.icu/manifest.plist\`
 
-          或访问: [https://ios.stellatrix.icu](https://ios.stellatrix.icu)
+          从 Releases 下载 \`.ipa\`，用 Sideloadly / AltStore 以你自己的 Apple ID 重签安装。
+          也可以在 AltStore / SideStore 里订阅本仓库的 \`source.json\`，之后自助更新。
           EOF

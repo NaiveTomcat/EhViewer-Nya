@@ -51,6 +51,7 @@ build/
 MIGRATION_PLAN.md
 EXECUTION_PLAN.md
 AUDIT_REPORT.md
+LocalizationAudit.md
 
 # Python scripts (internal tools)
 generate_icons.py
@@ -59,5 +60,4 @@ generate_icons.py
 default.profraw
 
 # Claude Code
-
 .claude/*
