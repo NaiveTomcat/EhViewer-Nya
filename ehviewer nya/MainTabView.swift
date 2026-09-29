@@ -116,40 +116,32 @@ struct MainTabView: View {
         #endif
         #if os(macOS)
         NavigationSplitView {
-            List(Tab.allCases.filter { $0 != .more }, id: \.self, selection: $selectedTab) { tab in
+            // 「我的」不占侧栏。它的内容（账号资料、图片配额）已并入设置页的
+            // 「账号」分类——侧栏本来就是平铺全部入口，再单开一格只有一个
+            // 二级页的入口，反而多一层。（iOS 的底部栏仍保留「我的」。）
+            List(Tab.allCases.filter { $0 != .more && $0 != .profile },
+                 id: \.self, selection: $selectedTab) { tab in
                 Label(tab.rawValue, systemImage: tab.icon)
             }
             .navigationTitle("EhViewer")
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)
-        } content: {
-            NavigationStack(path: $contentPath) {
-                macOSContentView(for: selectedTab)
-                    .navigationDestination(for: TagSearchDestination.self) { dest in
-                        // 标签点击推入的画廊列表 (对齐 Android: onTagClick → GalleryListScene)
-                        GalleryListView(mode: .tag(keyword: dest.tag), selection: $selectedGallery)
-                    }
-                    .navigationDestination(for: GalleryQueryDestination.self) { dest in
-                        // 上传者等查询推入的画廊列表
-                        GalleryListView(mode: .search(dest.query), selection: $selectedGallery)
-                    }
-            }
-            .id(selectedTab)
-            .navigationSplitViewColumnWidth(min: 350, ideal: 480)
         } detail: {
-            NavigationStack {
+            // 列表与画廊详情并排放在 detail 这一栏里，而不是让 NavigationSplitView
+            // 常驻第三个栏目。
+            //
+            // 三栏布局在没有任何选中时也会把第三栏画出来（内容是「选择画廊」占位），
+            // 切到设置、下载这些与画廊无关的页面时那一栏同样还在。改成 HSplitView 后，
+            // 详情栏只在真正选中一本画廊时才被加进来，其余时候列表独占整栏；
+            // 设置页的二级 push 仍在左栏的导航栈里，不受影响。
+            HSplitView {
+                galleryListColumn
                 if let gallery = selectedGallery {
-                    GalleryDetailView(gallery: gallery)
-                        .id(gallery.gid)
-                } else {
-                    ContentUnavailableView("选择画廊", systemImage: "photo.stack", description: Text("从列表选择一个画廊"))
+                    galleryDetailColumn(gallery)
                 }
             }
-            .environment(\.tagNavigationAction, TagNavigationAction { tag in
-                contentPath.append(TagSearchDestination(tag: tag))
-            })
-            .environment(\.searchNavigationAction, SearchNavigationAction { query in
-                contentPath.append(GalleryQueryDestination(query: query))
-            })
+            // HSplitView 按子视图的 ideal 尺寸摆放，不会自动拉满整栏：
+            // 设置页那类自带固定高度的内容会因此只覆盖上半截，下面露出窗口背景。
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: selectedTab) { _, newTab in
             selectedGallery = nil
@@ -265,6 +257,47 @@ struct MainTabView: View {
     }
 
     #if os(macOS)
+    /// 列表栏：当前标签页的内容（画廊列表 / 设置 / 下载 …），并承载标签与查询的推入导航。
+    ///
+    /// `.id(selectedTab)` 让换标签时这一栏整体重建——
+    /// 与改动前 content 栏的行为一致，列表不会残留上一个标签的滚动位置。
+    private var galleryListColumn: some View {
+        NavigationStack(path: $contentPath) {
+            macOSContentView(for: selectedTab)
+                // 历史页的列表用它推入画廊详情。画廊列表页走的是选中绑定，
+                // 不产生这种取值式跳转，两者互不干扰。
+                .navigationDestination(for: GalleryInfo.self) { gallery in
+                    GalleryDetailView(gallery: gallery)
+                        .id(gallery.gid)
+                }
+                .navigationDestination(for: TagSearchDestination.self) { dest in
+                    // 标签点击推入的画廊列表 (对齐 Android: onTagClick → GalleryListScene)
+                    GalleryListView(mode: .tag(keyword: dest.tag), selection: $selectedGallery)
+                }
+                .navigationDestination(for: GalleryQueryDestination.self) { dest in
+                    // 上传者等查询推入的画廊列表
+                    GalleryListView(mode: .search(dest.query), selection: $selectedGallery)
+                }
+        }
+        .id(selectedTab)
+        .frame(minWidth: 340, idealWidth: 480, maxWidth: .infinity)
+    }
+
+    /// 详情栏：只在有选中画廊时由 `HSplitView` 加入，所以不存在空占位状态。
+    private func galleryDetailColumn(_ gallery: GalleryInfo) -> some View {
+        NavigationStack {
+            GalleryDetailView(gallery: gallery)
+                .id(gallery.gid)
+        }
+        .frame(minWidth: 380, idealWidth: 520, maxWidth: .infinity)
+        .environment(\.tagNavigationAction, TagNavigationAction { tag in
+            contentPath.append(TagSearchDestination(tag: tag))
+        })
+        .environment(\.searchNavigationAction, SearchNavigationAction { query in
+            contentPath.append(GalleryQueryDestination(query: query))
+        })
+    }
+
     @ViewBuilder
     private func macOSContentView(for tab: Tab) -> some View {
         switch tab {
@@ -279,15 +312,22 @@ struct MainTabView: View {
         case .favorites:
             FavoritesView(selection: $selectedGallery)
         case .downloads:
-            DownloadsView()
+            // 与设置页同理：标题交给窗口顶部工具栏，页内不再自建导航栈。
+            DownloadsView(isPushed: true)
         case .history:
-            HistoryView()
+            HistoryView(isPushed: true)
         case .settings:
-            SettingsView()
+            // 复用列表栏已有的 NavigationStack，不让设置页再套一层。
+            //
+            // SettingsView() 默认会自建 NavigationStack（那层是给 iOS 用的，
+            // 手机上没有外层栈）。在 macOS 这里再套一层，就会多画一条只属于
+            // 内层栈的标题条——它和下面的内容对不齐。二级页本来也只要推入
+            // 外层栈即可，与 MoreTabView 里的 SettingsView(isPushed: true) 同理。
+            SettingsView(isPushed: true)
         case .profile:
-            // macOS 侧边栏平铺全部入口，「我的」的聚合价值不存在；
-            // 账号与配额在设置页里已有位置
-            ProfileView()
+            // macOS 侧栏不再有「我的」这一格（见侧栏的过滤），落到这里只有
+            // 兜底意义：账号资料与图片配额都在设置页的「账号」分类里。
+            EmptyView()
         case .more:
             // macOS 不使用 "更多" 标签，不应出现
             EmptyView()

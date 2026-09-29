@@ -8,6 +8,9 @@
 //  更是写好后从来没有任何界面调用过。图片配额是 E-Hentai 最常被关心的状态之一
 //  （超了就 509，看不了图），值得有个能随时查看和重置的地方。
 //
+//  macOS 已没有「我的」这一格：账号资料与配额并入了设置页的「账号」分类，
+//  复用下面的 `QuotaSectionView`。ProfileView 现在只服务 iOS。
+//
 
 import SwiftUI
 import EhModels
@@ -96,8 +99,67 @@ struct ProfileView: View {
 
     // MARK: - 图片配额
 
-    @ViewBuilder
     private var quotaSection: some View {
+        QuotaSectionView(
+            quota: quota,
+            isLoading: isLoading,
+            isResetting: isResetting,
+            resetResult: resetResult,
+            onReset: { Task { await reset() } }
+        )
+    }
+
+    // MARK: - 数据
+
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        resetResult = nil
+
+        async let profileTask = try? await EhAPI.shared.getProfile()
+        async let quotaTask = try? await EhAPI.shared.getHomeDetail()
+        let (p, q) = await (profileTask, quotaTask)
+
+        profile = p
+        quota = q
+
+        // 顺手把最新头像/昵称写回设置，其它界面共用
+        if let name = p?.displayName, !name.isEmpty { AppSettings.shared.displayName = name }
+        if let avatar = p?.avatar, !avatar.isEmpty { AppSettings.shared.avatar = avatar }
+
+        if p == nil && q == nil {
+            errorMessage = "请求失败，检查网络或登录状态。"
+        }
+        isLoading = false
+    }
+
+    private func reset() async {
+        isResetting = true
+        defer { isResetting = false }
+        do {
+            let updated = try await EhAPI.shared.resetLimit()
+            quota = updated
+            resetResult = "已重置，当前 \(updated.currentUsed) / \(updated.totalLimit)"
+        } catch {
+            errorMessage = EhError.localizedMessage(for: error)
+        }
+    }
+}
+
+// MARK: - 图片配额区块
+
+/// 图片配额的展示部分。
+///
+/// 数据和动作由调用方提供：「我的」页（iOS）和设置「账号」分类（macOS）
+/// 共用这一份渲染，免得同一条配额条两处各写一遍、日后样式漂移。
+struct QuotaSectionView: View {
+    let quota: HomeDetail?
+    let isLoading: Bool
+    let isResetting: Bool
+    let resetResult: String?
+    let onReset: () -> Void
+
+    var body: some View {
         Section {
             if let quota, quota.totalLimit > 0 {
                 let used = Double(quota.currentUsed)
@@ -136,7 +198,7 @@ struct ProfileView: View {
 
                 if quota.resetCost > 0 {
                     Button {
-                        Task { await reset() }
+                        onReset()
                     } label: {
                         HStack {
                             Text("重置配额")
@@ -186,42 +248,6 @@ struct ProfileView: View {
             Text("图片配额")
         } footer: {
             Text("浏览图片会消耗配额，用完会出现 509 错误。配额每天自动恢复，也可以花 GP 立即重置。")
-        }
-    }
-
-    // MARK: - 数据
-
-    private func load() async {
-        isLoading = true
-        errorMessage = nil
-        resetResult = nil
-
-        async let profileTask = try? await EhAPI.shared.getProfile()
-        async let quotaTask = try? await EhAPI.shared.getHomeDetail()
-        let (p, q) = await (profileTask, quotaTask)
-
-        profile = p
-        quota = q
-
-        // 顺手把最新头像/昵称写回设置，其它界面共用
-        if let name = p?.displayName, !name.isEmpty { AppSettings.shared.displayName = name }
-        if let avatar = p?.avatar, !avatar.isEmpty { AppSettings.shared.avatar = avatar }
-
-        if p == nil && q == nil {
-            errorMessage = "请求失败，检查网络或登录状态。"
-        }
-        isLoading = false
-    }
-
-    private func reset() async {
-        isResetting = true
-        defer { isResetting = false }
-        do {
-            let updated = try await EhAPI.shared.resetLimit()
-            quota = updated
-            resetResult = "已重置，当前 \(updated.currentUsed) / \(updated.totalLimit)"
-        } catch {
-            errorMessage = EhError.localizedMessage(for: error)
         }
     }
 }

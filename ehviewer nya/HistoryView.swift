@@ -55,8 +55,10 @@ struct HistoryView: View {
 
     private var historyInnerContent: some View {
         VStack(spacing: 0) {
-            // 紧凑页头：标题与动作同一行。系统大标题会先留一条空导航栏带
-            // 再放标题，两处加起来白白吃掉近百点垂直空间。
+            // iOS：标题与动作同一行，避免系统大标题那条空导航栏带。
+            // macOS：标题与动作都交给窗口顶部工具栏（见下方 .toolbar），
+            //        页内不再画页头，否则顶部栏显示 "EhViewer"、标题重复在页内。
+            #if !os(macOS)
             EhPageHeader(title: "阅读历史") {
                 EhSearchToggleButton(isActive: $isSearching)
                 if !vm.records.isEmpty {
@@ -65,6 +67,7 @@ struct HistoryView: View {
                         .foregroundStyle(EhColor.danger)
                 }
             }
+            #endif
 
             Group {
                 if filteredRecords.isEmpty {
@@ -90,6 +93,19 @@ struct HistoryView: View {
             // 于是它和浮起导航条重叠，键盘弹出后也没有收起的落点。
             .ehPageSearch(isActive: $isSearching, text: $searchText, placeholder: "搜索历史")
             .ehCompactHeader()
+            #if os(macOS)
+            .navigationTitle("阅读历史")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    EhSearchToggleButton(isActive: $isSearching)
+                }
+                if !vm.records.isEmpty {
+                    ToolbarItem(placement: .automatic) {
+                        Button("清空", role: .destructive) { vm.showClearConfirm = true }
+                    }
+                }
+            }
+            #endif
             .confirmationDialog("确认清空所有历史记录？", isPresented: $vm.showClearConfirm, titleVisibility: .visible) {
                 Button("清空", role: .destructive) {
                     vm.clearAll()

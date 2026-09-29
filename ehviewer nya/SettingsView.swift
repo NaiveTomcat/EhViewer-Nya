@@ -84,7 +84,6 @@ struct SettingsView: View {
     private var settingsInnerContent: some View {
         #if os(macOS)
         macSettingsContent
-            .navigationTitle("设置")
             .onAppear { vm.checkLoginState() }
         #else
         Form {
@@ -129,10 +128,8 @@ struct SettingsView: View {
         #endif
     }
 
-    // MARK: - macOS 分栏设置布局
+    // MARK: - macOS 设置（分类列表 + 二级页）
     #if os(macOS)
-    @State private var selectedSettingsTab: SettingsTab = .account
-
     private enum SettingsTab: String, CaseIterable, Identifiable {
         case account = "账号"
         case site = "站点"
@@ -165,35 +162,61 @@ struct SettingsView: View {
         }
     }
 
+    /// macOS 设置首页：一列分类，点进去才是该分类的设置项。
+    ///
+    /// 此前这里是「180pt 灰栏 + 右侧表单」的自带两栏布局——整个 App 里只有
+    /// 这一个页面自己再画一条侧栏。它和外层标签侧栏并排就成了两条灰栏，行宽
+    /// 对不齐；钉死的 `.frame(minWidth: 700, minHeight: 500)` 还会在切到设置页
+    /// 时把窗口撑大（表现为左侧一级菜单跟着变）。改成与下载、历史同样的单栏
+    /// 结构后，这些问题都不存在。
+    ///
+    /// 外观与二级页共用同一套 `Form`，两级切换时不会换一种长相。
     private var macSettingsContent: some View {
-        HStack(spacing: 0) {
-            // 左侧侧边栏
-            List(SettingsTab.allCases, selection: $selectedSettingsTab) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .tag(tab)
-            }
-            .listStyle(.sidebar)
-            .frame(width: 180)
-
-            Divider()
-
-            // 右侧内容区
-            ScrollView {
-                Form {
-                    macSettingsTabContent
+        Form {
+            Section {
+                ForEach(SettingsTab.allCases) { tab in
+                    NavigationLink(value: tab) {
+                        Label(tab.rawValue, systemImage: tab.icon)
+                    }
                 }
-                .formStyle(.grouped)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 700, minHeight: 500)
+        // .grouped 是必须的：macOS 上 Form 的默认样式是 columns（标签/控件分列），
+        // 不是分组卡片。
+        .formStyle(.grouped)
+        // 但分组表单的容器不参与滚动边缘处理，工具栏下沿那条通栏分割线本来不会画
+        // （普通 Form / List 都有，见「我的」页）。显式要求工具栏带背景即可补回。
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        // 标题放进窗口顶部工具栏（和首页、我的一致），页内不再画一条页头。
+        .navigationTitle("设置")
+        // 用取值式链接而不是 `NavigationLink { 目标 }`：外层列表栏那个
+        // NavigationStack 带的是 NavigationPath 绑定，取值式才和它是一套。
+        .navigationDestination(for: SettingsTab.self) { tab in
+            macSettingsCategoryPage(tab)
+        }
+    }
+
+    /// 某个分类的设置项页（从首页点进去的二级页）。
+    /// 外观与分割线处理同首页，见上面的说明。
+    private func macSettingsCategoryPage(_ tab: SettingsTab) -> some View {
+        Form {
+            macSettingsSection(for: tab)
+        }
+        .formStyle(.grouped)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .navigationTitle(tab.rawValue)
     }
 
     @ViewBuilder
-    private var macSettingsTabContent: some View {
-        switch selectedSettingsTab {
+    private func macSettingsSection(for tab: SettingsTab) -> some View {
+        switch tab {
         case .account:
             accountSection
+            // 原本「我的」页上的图片配额。未登录时不渲染——那一屏只留
+            // accountSection 里的「登录」入口，也就不会白跑一次配额请求。
+            if vm.isLoggedIn {
+                MacAccountQuotaSection()
+            }
         case .site:
             siteSection
         case .display:
@@ -214,6 +237,48 @@ struct SettingsView: View {
             advancedSection
         case .about:
             aboutSection
+        }
+    }
+
+    /// 设置「账号」分类里的图片配额区块。
+    ///
+    /// 自己拉取配额：它和设置页的其它数据（登录态、站点偏好）不是一路货色，
+    /// 没必要为它在 SettingsViewModel 里多加一份状态。渲染交给
+    /// `QuotaSectionView`，与 iOS「我的」页共用同一份样式。
+    private struct MacAccountQuotaSection: View {
+        @State private var quota: HomeDetail?
+        @State private var isLoading = true
+        @State private var isResetting = false
+        @State private var message: String?
+
+        var body: some View {
+            QuotaSectionView(
+                quota: quota,
+                isLoading: isLoading,
+                isResetting: isResetting,
+                resetResult: message,
+                onReset: { Task { await reset() } }
+            )
+            .task { await load() }
+        }
+
+        private func load() async {
+            isLoading = true
+            message = nil
+            quota = try? await EhAPI.shared.getHomeDetail()
+            isLoading = false
+        }
+
+        private func reset() async {
+            isResetting = true
+            defer { isResetting = false }
+            do {
+                let updated = try await EhAPI.shared.resetLimit()
+                quota = updated
+                message = "已重置，当前 \(updated.currentUsed) / \(updated.totalLimit)"
+            } catch {
+                message = EhError.localizedMessage(for: error)
+            }
         }
     }
     #endif
@@ -320,9 +385,12 @@ struct SettingsView: View {
             }
 
             // 账号资料 + 图片配额 (对齐 Android GetProfileScene)
+            // macOS 上这一份已并入「账号」分类，不再单开一个二级页。
+            #if !os(macOS)
             NavigationLink("账号资料与配额") {
                 ProfileView()
             }
+            #endif
 
             // 我的标签 (对齐 Android MyTagsActivity) —— 原生页面，不再跳浏览器
             NavigationLink("我的标签") {

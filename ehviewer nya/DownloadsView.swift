@@ -28,6 +28,27 @@ enum DownloadStatusFilter: String, CaseIterable, Identifiable {
 }
 
 struct DownloadsView: View {
+    /// 被推入父导航栈时，不创建自己的 NavigationStack，避免嵌套
+    private var isPushed: Bool = false
+
+    init(isPushed: Bool = false) {
+        self.isPushed = isPushed
+    }
+
+    /// macOS 的导航由列表栏那一层 NavigationStack 承载，本页不再自建一层。
+    /// 嵌套两层会让 navigationTitle 落在内层：标题进不了窗口顶部工具栏，
+    /// 而是在页面里画出一条自己的标题条。
+    @ViewBuilder
+    private func ehPageNavigation<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if isPushed {
+            content()
+        } else {
+            NavigationStack {
+                content()
+            }
+        }
+    }
+
     @State private var vm = DownloadsViewModel()
 
     // MARK: - 标签/搜索/过滤
@@ -79,13 +100,16 @@ struct DownloadsView: View {
     @State private var readingProgress: [Int64: Int] = [:]  // gid -> page index
 
     var body: some View {
-        NavigationStack {
+        ehPageNavigation {
             VStack(spacing: 0) {
-                // 紧凑页头：标题与动作同一行，避免系统大标题那条空导航栏带
+                // iOS：标题与动作同一行，避免系统大标题那条空导航栏带。
+                // macOS：两者都交给窗口顶部工具栏（见 .toolbar），页内不再画页头。
+                #if !os(macOS)
                 EhPageHeader(title: "下载") {
                     EhSearchToggleButton(isActive: $isSearching)
                     mainToolbarMenu
                 }
+                #endif
 
                 // 标签选择栏
                 labelPicker
@@ -189,6 +213,17 @@ struct DownloadsView: View {
                 }
             }
         }
+        #if os(macOS)
+        .navigationTitle("下载")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                EhSearchToggleButton(isActive: $isSearching)
+            }
+            ToolbarItem(placement: .automatic) {
+                mainToolbarMenu
+            }
+        }
+        #endif
         .onChange(of: selectedLabel) { _, newValue in
             AppSettings.shared.recentDownloadLabel = newValue
         }
