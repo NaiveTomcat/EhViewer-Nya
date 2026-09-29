@@ -1,10 +1,10 @@
 name: Build
 
+# 不再跟随 push / PR 自动运行：日常提交不消耗 CI，也不会发失败邮件。
+# 需要一条干净的编译校验时在 Actions 页面手动触发这次运行。
+# 正式的构建与发版在 release_ios.yml，只认版本 tag。
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
