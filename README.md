@@ -23,19 +23,32 @@
 
 **本项目没有 TestFlight，也不会上架 App Store。** 内容形态不符合审核指南，请不要等待邀请。
 
+**本项目没有付费 Apple 开发者账号，Releases 里的安装包一律未签名。** 需要你自己签名后才能装。
+
 | 平台 | 安装包 | 做法 | 有效期 |
 |------|--------|------|--------|
-| Mac | `.dmg` | 双击打开，拖进「应用程序」 | 1 年 |
+| Mac | 无预编译包 | 从源码构建，见下文 | — |
 | iPhone / iPad | `.ipa` | 用你自己的 Apple ID 签名后安装，见下文 | 免费账号 7 天，付费账号 1 年 |
 
-安装包见 [Releases](../../releases)。iPhone 和 iPad 用的是同一个通用包。
+Releases 提供的是**未签名**的 `.ipa`，iPhone 与 iPad 通用。
 
 > 完整的安装步骤、签名工具直达链接与常见卡点，见 **[Wiki：安装与签名](../../wiki/Installation)**。
 
 ### Mac
 
-DMG 已用 Developer ID 签名并通过 Apple 公证，票据已植入，断网也能正常安装，不会出现
-「无法打开，因为无法验证开发者」。双击挂载后把 App 拖进「应用程序」即可。
+**Releases 里没有 Mac 安装包。** 制作可分发的 `.dmg` 需要付费 Apple 开发者账号
+（Developer ID 证书 + 公证），本项目没有，所以 Mac 版请从源码构建：
+
+```bash
+git clone https://github.com/ShiroiTree/EhViewer-Nya.git
+cd EhViewer-Nya
+open "ehviewer nya.xcodeproj"
+```
+
+选择 `ehviewer nya` scheme，目标设备选 **My Mac**，按 `⌘R`。
+
+> 有付费账号的话，可以用 `distribute_mac.sh` 制作签名 + 公证过的 DMG 发给别人，
+> 见[构建 macOS 分发包](#构建-macos-分发包)。
 
 ### iPhone / iPad
 
@@ -49,15 +62,17 @@ DMG 已用 Developer ID 签名并通过 Apple 公证，票据已植入，断网�
 | [Sideloadly](https://sideloadly.io) | Windows / macOS | 连数据线，填 Apple ID，选 IPA，点开始 |
 | [AltStore](https://altstore.io) / [SideStore](https://sidestore.io) | Windows / macOS | 装一次后可在设备上自助续签，不必每周接电脑 |
 
+下载的 `.ipa` 未签名，这些工具会用你的 Apple ID 重新签名后装到设备上，包里本来就没有
+任何需要保留的签名。
+
 签名用的 Apple ID 建议单独注册一个，不要用主力账号。
 
 免费账号签出的 App **7 天后失效**，重签即可，数据不会丢。付费开发者账号（$99/年）为 1 年。
 
-关于重签的几点实测：
+关于重签的几点：
 
-- 本项目的 entitlements 只有 `application-identifier` 和 `team-identifier`，**没有用 App Group、
-  推送或关联域名**。这类权限在免费账号下无法申请，会被签名工具剥离并导致功能残缺——本项目不受影响。
-- 下载进度的灵动岛显示走 ActivityKit，数据经 Live Activity 传递而非共享容器，重签后照常工作。
+- 重签会**整体替换**包内的 entitlements，以你账号的描述文件为准。
+- 下载进度的灵动岛走 ActivityKit，数据经 Live Activity 传递而非共享容器，重签后照常工作。
 - widget 扩展会额外占用一个 App ID。免费账号每 7 天有 App ID 数量配额，正常使用够用；
   如果你短时间内反复重签多个 App 可能撞到上限，等配额恢复即可。
 
@@ -130,6 +145,9 @@ open "ehviewer nya.xcodeproj"
 
 ### 构建 macOS 分发包
 
+> **本节可选，且需要付费账号。** 没有付费账号请跳过——Mac 版直接从源码运行即可，
+> 本节讲的只是「怎么做一个能发给别人、对方不会被 Gatekeeper 拦下的 `.dmg`」。
+
 `distribute_mac.sh` 会完成签名、公证、打包全流程，产出一个可直接分发、不触发 Gatekeeper 警告的 `.dmg`。需要付费开发者账号。
 
 **准备 App 专用密码** — 公证服务不接受 Apple ID 登录密码：
@@ -154,14 +172,13 @@ TEAM_ID=XXXXXXXXXX
 APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
 ```
 
-**运行**：
+**运行**（在仓库根目录，`distribute_mac.sh` 就在那里）：
 
 ```bash
-cd "ehviewer nya"
 ./distribute_mac.sh
 ```
 
-脚本依次执行 Release 归档、Developer ID 导出、Hardened Runtime 深度签名、创建 DMG、提交 Apple 公证并等待结果、植入公证票据。完成后 `.dmg` 在 `build/` 目录下。
+脚本依次执行 Release 归档、Developer ID 导出、Hardened Runtime 深度签名、创建 DMG、提交 Apple 公证并等待结果、植入公证票据。完成后 `.dmg` 在仓库根目录的 `build/` 下，名为 `EhViewer-Nya-<版本>.dmg`。
 
 Developer ID 证书有效期 1 年，到期在 Xcode 里续签后重新运行即可。
 

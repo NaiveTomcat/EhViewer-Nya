@@ -1,12 +1,17 @@
 # ────────────────────────────────────────────────────────────
 #  EhViewer-Nya — iOS 构建 & 发布流水线
 #  触发: 打版本 tag (v*) / 手动 dispatch
-#  产物: IPA 附到 GitHub Release；手动 dispatch 时仅存为 artifact
+#  产物: 未签名 IPA 附到 GitHub Release（手动 dispatch 时仅存为 artifact）
+#
+#  本项目没有付费 Apple 开发者账号，所以不做任何签名与公证：
+#  归档时关闭代码签名，再把 .xcarchive 里的 .app 自行打包成 IPA。
+#  用户拿到后用 Sideloadly / AltStore / SideStore 以自己的 Apple ID 重签安装。
+#  因此这条流水线不需要任何签名 secret。
 # ────────────────────────────────────────────────────────────
 
 name: Build & Release iOS
 
-# 这是发布流水线，不是持续集成——每次 push 都签一个包既无必要，
+# 这是发布流水线，不是持续集成——每次 push 都出一个包既无必要，
 # 失败时还会按 push 频率发失败邮件。日常校验交给 build.yml。
 on:
   push:
@@ -20,7 +25,7 @@ on:
 
 # 同一分支只保留最新一次构建
 concurrency:
-  group: deploy-ios-${{ github.ref }}
+  group: release-ios-${{ github.ref }}
   cancel-in-progress: true
 
 # 建 Release 与回写 source.json 都需要写权限
@@ -30,11 +35,9 @@ permissions:
 env:
   SCHEME: "ehviewer nya"
   PROJECT: "ehviewer nya.xcodeproj"
-  BUNDLE_ID: "io.github.ShiroiTree.Ehviewer-Nya"
-  TEAM_ID: "8S29RP4LW7"
+  APP_NAME: "ehviewer nya"
   ARCHIVE_PATH: build/EhViewer-Nya.xcarchive
   IPA_DIR: build/ipa
-  EXPORT_OPTIONS: build/ExportOptions.plist
 
 jobs:
   build-and-release:
@@ -54,90 +57,7 @@ jobs:
           sudo xcode-select -s "$LATEST"
           xcodebuild -version
 
-      # ─── 1.5 前置检查: 签名凭据是否配置 ──────────────────
-      # 缺 secret 时 security import 只会抛
-      # "SecKeychainItemImport: One or more parameters ... not valid"，
-      # 看不出根因。这里提前失败并说清楚缺什么。
-      - name: Verify signing secrets
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-        run: |
-          MISSING=""
-          [ -z "$BUILD_CERTIFICATE_BASE64" ] && MISSING="$MISSING BUILD_CERTIFICATE_BASE64"
-          [ -z "$P12_PASSWORD" ] && MISSING="$MISSING P12_PASSWORD"
-          [ -z "$KEYCHAIN_PASSWORD" ] && MISSING="$MISSING KEYCHAIN_PASSWORD"
-          [ -z "$ASC_KEY_ID" ] && MISSING="$MISSING ASC_KEY_ID"
-          [ -z "$ASC_ISSUER_ID" ] && MISSING="$MISSING ASC_ISSUER_ID"
-          [ -z "$ASC_KEY_P8_BASE64" ] && MISSING="$MISSING ASC_KEY_P8_BASE64"
-          if [ -n "$MISSING" ]; then
-            echo "::error::缺少签名 Secret:$MISSING"
-            echo "在 Settings → Secrets and variables → Actions 中配置后重新运行。"
-            echo "  BUILD_CERTIFICATE_BASE64 — Apple Distribution 身份导出的 .p12（须含私钥），base64"
-            echo "  P12_PASSWORD             — 导出 .p12 时设置的密码"
-            echo "  KEYCHAIN_PASSWORD        — 任意字符串，仅用于 CI 临时钥匙串"
-            echo "  ASC_KEY_ID               — App Store Connect API 密钥 ID"
-            echo "  ASC_ISSUER_ID            — 同一页面上的 Issuer ID"
-            echo "  ASC_KEY_P8_BASE64        — 下载的 AuthKey_xxx.p8，base64"
-            exit 1
-          fi
-          echo "✅ 签名凭据齐全"
-
-      # ─── 2. 证书 & API 密钥注入 ────────────────────────────
-      # 签名走自动模式：证书仍需本地导入（xcodebuild 不会替你造私钥），
-      # 描述文件则由 App Store Connect API 按需创建/更新。
-      # 项目含 widget 扩展，主 App 与扩展各需一份描述文件，手工维护两份
-      # 且每加一台设备就要全部重签，不如让 Xcode 自己管。
-      - name: Import certificate & API key
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8
-
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
-          echo -n "$ASC_KEY_P8_BASE64" | base64 --decode -o "$ASC_KEY_PATH"
-          echo "ASC_KEY_PATH=$ASC_KEY_PATH" >> "$GITHUB_ENV"
-
-          # 创建临时钥匙串
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # 导入证书
-          # 不能加 -t cert: 那会只挑出证书、丢掉私钥。签名需要两者配对，这里全量导入。
-          security import "$CERTIFICATE_PATH" \
-            -P "$P12_PASSWORD" \
-            -A -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-
-          # 校验配对是否成立。只导出了证书 (缺私钥) 或只导出了私钥 (缺证书) 都会在这里被挡下，
-          # 否则错误会拖到 Archive 阶段才以 "No signing certificate" 的形式冒出来，很难定位。
-          IDENTITIES=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true)
-          echo "$IDENTITIES"
-          if ! echo "$IDENTITIES" | grep -qE '^[[:space:]]+[0-9]+\)'; then
-            echo "::error::BUILD_CERTIFICATE_BASE64 未能导入出可用于签名的身份。"
-            echo "::error::请在「钥匙串访问」中选中**证书那一行**（不是展开后的私钥）右键导出 .p12，"
-            echo "::error::导出的文件必须同时包含证书与私钥。"
-            exit 1
-          fi
-
-          security set-key-partition-list \
-            -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
-
-          echo "✅ Certificate imported, API key installed"
-
-      # ─── 3. 解析 SPM 依赖 ──────────────────────────────────
+      # ─── 2. 解析 SPM 依赖 ──────────────────────────────────
       - name: Resolve Swift packages
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -145,51 +65,10 @@ jobs:
             -scheme "$SCHEME" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm_cache"
 
-      # ─── 4. 生成 ExportOptions.plist ────────────────────────
-      - name: Generate ExportOptions.plist
-        run: |
-          mkdir -p build
-          cat > "$EXPORT_OPTIONS" << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <!-- 用 App Store 类型签名，因为这类描述文件不含设备列表。
-                 Ad-Hoc 描述文件会把已登记设备的 UDID 明文嵌进 IPA，
-                 公开发布等于公开这些设备标识。用户拿到包后会用自己的
-                 Apple ID 重签，原签名本就会被剥掉，类型不影响可用性。 -->
-            <key>method</key>
-            <string>app-store-connect</string>
-            <!-- 只产出本地文件，绝不上传到 App Store Connect -->
-            <key>destination</key>
-            <string>export</string>
-            <key>teamID</key>
-            <string>8S29RP4LW7</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>stripSwiftSymbols</key>
-            <true/>
-            <key>thinning</key>
-            <string>&lt;none&gt;</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-          </dict>
-          </plist>
-          PLIST
-
-          echo "✅ ExportOptions.plist generated"
-          cat "$EXPORT_OPTIONS"
-
-      # ─── 5. Archive ─────────────────────────────────────────
-      # 归档阶段不签名，签名全部推迟到导出阶段。
-      #
-      # 原因：自动签名在归档时只做**开发**签名，任何 Apple Distribution 的
-      # 指定都会被判为 "conflicting provisioning settings"；而把签名设置
-      # 全局传给 xcodebuild 又会波及 SPM 依赖（GRDB 不支持描述文件）。
-      # 导出阶段带 API 密钥做自动签名，主 App 与 widget 的描述文件由
-      # Xcode 一并创建并签出，两个问题同时消失。
-      - name: Archive
+      # ─── 3. 归档（不签名）───────────────────────────────────
+      # CODE_SIGNING_ALLOWED=NO 让归档阶段完全跳过签名，于是既不需要证书、
+      # 也不需要描述文件，runner 上不需要任何凭据。这三个变量与 build.yml 一致。
+      - name: Archive (unsigned)
         run: |
           xcodebuild archive \
             -project "$PROJECT" \
@@ -197,19 +76,20 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm_cache" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
 
           echo "✅ Archive complete"
-          ls -la "$ARCHIVE_PATH"
+          ls -la "$ARCHIVE_PATH/Products/Applications"
 
-      # ─── 6. 读取版本信息 ────────────────────────────────────
-      # 放在导出之前，导出时才能用版本号命名 IPA。
+      # ─── 4. 读取版本信息 ────────────────────────────────────
+      # 放在打包之前，IPA 才能用版本号命名。
       - name: Extract version info
         id: version
         run: |
-          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/ehviewer nya.app/Info.plist"
+          PLIST_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app/Info.plist"
           if [ ! -f "$PLIST_PATH" ]; then
             echo "::error::归档里找不到主 App 的 Info.plist: $PLIST_PATH"
             exit 1
@@ -228,34 +108,32 @@ jobs:
           echo "title=$TITLE" >> "$GITHUB_OUTPUT"
           echo "📦 $TITLE"
 
-      # ─── 7. Export IPA ──────────────────────────────────────
-      - name: Export IPA
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # ─── 5. 打包成 IPA ──────────────────────────────────────
+      # 不走 xcodebuild -exportArchive：那一步要求有效的签名身份与描述文件，
+      # 正是本项目没有的东西。IPA 的结构本身只是「Payload/<App>.app 的 zip」，
+      # 所以直接从归档里取 .app 自己压一个。
+      # -y 必须加：内嵌 framework 内部靠符号链接组织，丢了会破坏 bundle 结构。
+      - name: Package unsigned IPA
         run: |
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -exportPath "$IPA_DIR" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-
-          IPA_FILE=$(find "$IPA_DIR" -name "*.ipa" | head -1)
-          if [ -z "$IPA_FILE" ]; then
-            echo "::error::导出目录里没有 .ipa"
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::归档里找不到 .app: $APP_PATH"
             exit 1
           fi
+
           IPA_NAME="EhViewer-Nya-${{ steps.version.outputs.version }}.ipa"
-          mv "$IPA_FILE" "$IPA_DIR/$IPA_NAME"
+          rm -rf "$IPA_DIR"
+          mkdir -p "$IPA_DIR/Payload"
+          cp -R "$APP_PATH" "$IPA_DIR/Payload/"
+          ( cd "$IPA_DIR" && zip -qry "$IPA_NAME" Payload )
+          rm -rf "$IPA_DIR/Payload"
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
 
-          echo "✅ IPA exported"
+          echo "✅ IPA packaged"
           ls -lh "$IPA_DIR/$IPA_NAME"
+          unzip -l "$IPA_DIR/$IPA_NAME" | head -6
 
-      # ─── 8. 留存产物 ────────────────────────────────────────
+      # ─── 6. 留存产物 ────────────────────────────────────────
       # 手动 dispatch 没有 tag，不会建 Release，靠 artifact 取包。
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
@@ -265,7 +143,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # ─── 9. 发布到 GitHub Release ───────────────────────────
+      # ─── 7. 发布到 GitHub Release ───────────────────────────
       # 只在 tag 触发时发布；重新运行时覆盖同名 Release。
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -275,23 +153,38 @@ jobs:
           TAG="${{ github.ref_name }}"
           IPA="$IPA_DIR/$IPA_NAME"
 
+          # 说明写死而不用 --generate-notes：AltStore 源清单里的更新说明取自
+          # Release 正文（截断 2000 字），对订阅者来说「这个包未签名、怎么装」
+          # 比提交列表有用得多。逐版本改动看 CHANGELOG。
+          cat > build/release-notes.md << 'EOF'
+          > ⚠️ **这个 IPA 未签名。** 本项目没有付费 Apple 开发者账号，无法提供签名与公证。
+          >
+          > 请用你自己的 Apple ID 通过 [Sideloadly](https://sideloadly.io) /
+          > [AltStore](https://altstore.io) / [SideStore](https://sidestore.io) 重签后安装。
+          > 免费账号签出的 App 7 天后失效，重签即可，数据不会丢。
+          >
+          > 也可以把本仓库的 `source.json` 添加为 AltStore 源，之后在设备上自助更新。
+
+          安装步骤见 [README](https://github.com/ShiroiTree/EhViewer-Nya/blob/main/README.md)，
+          逐版本改动见 [CHANGELOG](https://github.com/ShiroiTree/EhViewer-Nya/blob/main/CHANGELOG.md)。
+          EOF
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，覆盖其中的 IPA"
             gh release upload "$TAG" "$IPA" --clobber
           else
             gh release create "$TAG" "$IPA" \
               --title "${{ steps.version.outputs.title }}" \
-              --generate-notes
+              --notes-file build/release-notes.md
           fi
 
           echo "✅ 已发布: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
 
-      # ─── 10. 刷新 AltStore / SideStore 源清单 ───────────────
+      # ─── 8. 刷新 AltStore / SideStore 源清单 ────────────────
       # iOS 不允许下载执行原生代码，所以没有热更新。「装一次之后自动更新」
       # 靠的是 AltStore / SideStore 的源订阅：用户添加一次源，之后新版本
       # 会出现在它们的更新列表里，用用户自己的证书重签安装。
-      # 必须排在发布之后——清单里的 downloadURL 指向 Release 资产，
-      # 也要重新生成，否则新版本不会出现在订阅方。
+      # 必须排在发布之后——清单里的 downloadURL 指向 Release 资产。
       - name: Refresh AltStore source manifest
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -308,19 +201,13 @@ jobs:
             git push origin HEAD:main
           fi
 
-      # ─── 11. 清理钥匙串 ────────────────────────────────────
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
-
-      # ─── 12. 构建摘要 ──────────────────────────────────────
+      # ─── 9. 构建摘要 ────────────────────────────────────────
       - name: Build summary
         if: success()
         run: |
           echo ""
           echo "══════════════════════════════════════════════"
-          echo "  ✅ 构建完成"
+          echo "  ✅ 构建完成（IPA 未签名）"
           echo "──────────────────────────────────────────────"
           echo "  版本: ${{ steps.version.outputs.title }}"
           echo "  提交: ${{ github.sha }}"
@@ -329,7 +216,6 @@ jobs:
           echo "  ${{ github.server_url }}/${{ github.repository }}/releases"
           echo "══════════════════════════════════════════════"
 
-          # GitHub Actions Job Summary
           RELEASE_LINE='手动 dispatch 构建，未建 Release，请从本页 artifact 下载。'
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             RELEASE_LINE="[${{ github.ref_name }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }})"
@@ -345,8 +231,9 @@ jobs:
           | **提交** | \`${{ github.sha }}\` |
           | **Release** | ${RELEASE_LINE} |
 
-          ### 安装方式
+          ### 产物说明
 
-          从 Releases 下载 \`.ipa\`，用 Sideloadly / AltStore 以你自己的 Apple ID 重签安装。
-          也可以在 AltStore / SideStore 里订阅本仓库的 \`source.json\`，之后自助更新。
+          这个 IPA **未签名**（本项目没有付费 Apple 开发者账号）。用户需用
+          Sideloadly / AltStore / SideStore 以自己的 Apple ID 重签后安装，
+          或订阅本仓库的 \`source.json\` 自助更新。
           EOF
