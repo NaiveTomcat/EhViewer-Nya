@@ -1,0 +1,17 @@
+{
+  "groups" : [
+    {
+      "name" : "Icon",
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Artwork.png",
+          "name" : "Artwork"
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
