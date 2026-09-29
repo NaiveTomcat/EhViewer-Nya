@@ -50,7 +50,7 @@ public final class LogManager: Sendable {
     private let maxFileCount: Int = 5
 
     /// OSLog 分类
-    private let osLogger = Logger(subsystem: "Stellatrix.ehviewer-apple", category: "App")
+    private let osLogger = Logger(subsystem: "io.github.ShiroiTree.Ehviewer-Nya", category: "App")
 
     /// 串行队列, 保证文件写入线程安全
     private let queue = DispatchQueue(label: "com.ehviewer.log", qos: .utility)
@@ -141,7 +141,7 @@ public final class LogManager: Sendable {
 
         var combined = """
         ═══════════════════════════════════════
-        EhViewer Apple — 诊断日志
+        EhViewer-Nya — 诊断日志
         导出时间: \(ISO8601DateFormatter().string(from: Date()))
         系统: \(systemInfo())
         App 版本: \(appVersion())

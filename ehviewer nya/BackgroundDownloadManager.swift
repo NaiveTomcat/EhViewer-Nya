@@ -15,11 +15,13 @@ import EhSettings
 final class BackgroundDownloadManager: NSObject, @unchecked Sendable {
     static let shared = BackgroundDownloadManager()
 
-    private let downloadTaskIdentifier = "Stellatrix.ehviewer-apple.download"
-    private let refreshTaskIdentifier = "Stellatrix.ehviewer-apple.refresh"
+    // 这两个值必须与 Info.plist 里 BGTaskSchedulerPermittedIdentifiers 完全一致
+    // （那里写的是 $(PRODUCT_BUNDLE_IDENTIFIER).download / .refresh），否则注册静默失败
+    private let downloadTaskIdentifier = "io.github.ShiroiTree.Ehviewer-Nya.download"
+    private let refreshTaskIdentifier = "io.github.ShiroiTree.Ehviewer-Nya.refresh"
 
     private lazy var backgroundSession: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.stellatrix.ehviewer.background")
+        let config = URLSessionConfiguration.background(withIdentifier: "io.github.ShiroiTree.Ehviewer-Nya.background")
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true

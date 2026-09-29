@@ -4,7 +4,7 @@
 //
 //  App 更新检查器 — 对齐 Android AppUpdater 逻辑
 //  使用 GitHub Releases API 检测新版本，提示用户更新
-//  参考: https://github.com/felixchaos/EhViewer-Apple/releases
+//  参考: https://github.com/ShiroiTree/EhViewer-Nya/releases
 //
 
 import SwiftUI
@@ -64,7 +64,7 @@ final class AppUpdateChecker: @unchecked Sendable {
     static let shared = AppUpdateChecker()
 
     /// GitHub 仓库 Releases API
-    private static let releasesURL = "https://api.github.com/repos/felixchaos/EhViewer-Apple/releases/latest"
+    private static let releasesURL = "https://api.github.com/repos/ShiroiTree/EhViewer-Nya/releases/latest"
 
     /// 检查间隔: 24 小时
     private static let checkIntervalSeconds: TimeInterval = 24 * 60 * 60
@@ -129,7 +129,7 @@ final class AppUpdateChecker: @unchecked Sendable {
 
             var request = URLRequest(url: url)
             request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
-            request.setValue("EhViewer-Apple/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+            request.setValue("EhViewer-Nya/\(currentVersion)", forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 15
 
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -163,7 +163,7 @@ final class AppUpdateChecker: @unchecked Sendable {
 
             if comparison < 0 {
                 // 有新版本
-                let releaseURL = URL(string: release.htmlUrl) ?? URL(string: "https://github.com/felixchaos/EhViewer-Apple/releases")!
+                let releaseURL = URL(string: release.htmlUrl) ?? URL(string: "https://github.com/ShiroiTree/EhViewer-Nya/releases")!
 
                 // 查找 IPA 或 ZIP 资产
                 let downloadAsset = release.assets.first { asset in

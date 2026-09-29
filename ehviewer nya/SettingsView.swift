@@ -1133,7 +1133,7 @@ struct SettingsView: View {
             .disabled(AppUpdateChecker.shared.isChecking)
 
             Button("源代码") {
-                openURL(URL(string: "https://github.com/felixchaos/EhViewer-Apple")!)
+                openURL(URL(string: "https://github.com/ShiroiTree/EhViewer-Nya")!)
             }
 
             NavigationLink("开源协议") {
@@ -1183,7 +1183,48 @@ struct SettingsView: View {
 
     private var licensesView: some View {
         List {
-            // 本项目
+            // 本项目 — fork 之后新增的文件
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("EhViewer-Nya")
+                            .font(.headline)
+                        Spacer()
+                        Text("MIT")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Copyright © 2026 ShiroiTree")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("""
+Permission is hereby granted, free of charge, to any person obtaining a copy \
+of this software and associated documentation files (the "Software"), to deal \
+in the Software without restriction, including without limitation the rights \
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell \
+copies of the Software, and to permit persons to whom the Software is \
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all \
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR \
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, \
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE \
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER \
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, \
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE \
+SOFTWARE.
+""")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("本项目")
+            }
+
+            // 上游 — 继承自 EhViewer-Apple、继续沿用 Apache-2.0 的文件
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -1194,7 +1235,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Copyright © 2024 felixchaos")
+                    Text("Copyright © 2024-2026 EhViewer-Apple Contributors")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("""
@@ -1215,7 +1256,7 @@ limitations under the License.
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text("本项目")
+                Text("上游项目")
             }
 
             // 致谢
