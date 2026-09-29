@@ -9,5 +9,5 @@ import SwiftUI
 
 /// EhUI 命名空间
 public enum EhUI {
-    public static let version = "0.1.0"
+    
 }
