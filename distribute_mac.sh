@@ -3,9 +3,10 @@
 # distribute_mac.sh — EhViewer-Nya macOS 自动构建 + 签名 + 公证 + DMG 打包
 #
 # 用法:
-#   ./distribute_mac.sh
+#   ./distribute_mac.sh           需要付费账号: Developer ID 签名 + 公证 + DMG
+#   ./distribute_mac.sh --local   零账号: ad-hoc 签名 + DMG（自行放行后使用）
 #
-# 前置条件:
+# 前置条件（仅分发模式需要）:
 #   1. 已安装 Xcode 26+ 并登录 Apple Developer 账号
 #   2. Keychain 中已导入 "Developer ID Application" 证书
 #   3. 配置环境变量（直接 export 或写入 .env 文件）:
@@ -14,7 +15,9 @@
 #        APP_SPECIFIC_PASSWORD — App 专用密码
 #
 # 输出:
-#   build/EhViewer-Nya-<version>.dmg  — 已公证、可直接分发的安装包
+#   build/EhViewer-Nya-<version>.dmg
+#     分发模式 — 已公证，双击即装，无 Gatekeeper 警告
+#     本地模式 — ad-hoc 签名，本机可跑；传给别人对方需手动放行
 #
 
 set -euo pipefail
@@ -45,6 +48,29 @@ ARCHIVE_PATH="$BUILD_DIR/${APP_NAME}.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 APP_PATH="$EXPORT_DIR/${APP_NAME}.app"
 DMG_DIR="$BUILD_DIR/dmg_staging"
+
+# ─────────────────────────── 构建模式 ───────────────────────────
+# dist  — Developer ID 签名 + 公证 + DMG，需要付费账号，产物可直接分发
+# local — ad-hoc 签名 + DMG，零账号，产物仅供本机（或对方自行放行后）使用
+MODE="dist"
+
+usage() {
+    echo "用法: ./distribute_mac.sh [--local]"
+    echo ""
+    echo "  (无参数)   Developer ID 签名 + 公证的 DMG，需要付费开发者账号"
+    echo "  --local    ad-hoc 签名 + DMG，不需要任何账号与证书"
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --local)   MODE="local" ;;
+            -h|--help) usage; exit 0 ;;
+            *)         usage >&2; fail "未知参数: $1" ;;
+        esac
+        shift
+    done
+}
 
 # ─────────────────────────── 加载环境变量 ───────────────────────────
 load_env() {
@@ -79,8 +105,19 @@ check_prerequisites() {
     xcode_ver=$(xcodebuild -version | sed -n '1p')
     info "  $xcode_ver"
 
-    # codesign
+    # codesign / hdiutil
     command -v codesign &>/dev/null || fail "未找到 codesign"
+    command -v hdiutil  &>/dev/null || fail "未找到 hdiutil"
+
+    # 本地模式到此为止：不需要账号、证书、描述文件。
+    # 签名走 ad-hoc（"-"），DMG 不签也不公证——那两件事都建立在
+    # Developer ID 证书之上，没有账号时做了 Gatekeeper 也不会认。
+    if [[ "$MODE" == "local" ]]; then
+        SIGNING_IDENTITY="-"
+        info "  模式: 本地 (ad-hoc 签名，不公证，无需开发者账号)"
+        success "环境检查通过"
+        return
+    fi
 
     # notarytool
     xcrun notarytool --version &>/dev/null || fail "未找到 notarytool (需要 Xcode 13+)"
@@ -103,23 +140,58 @@ check_prerequisites() {
 }
 
 # ─────────────────────────── 1. 构建 Archive ───────────────────────────
+# xcodebuild 的失败原因通常埋在几千行日志中间，而结尾只留一句
+# "The following build commands failed"。所以整体落盘，失败时把
+# error: / 签名相关的行挑出来。
+# 另外不能直接管道给 tail：set -e + pipefail 会让脚本在管道失败那一刻就
+# 退出，后面那句兜底报错永远轮不到执行。
+run_archive() {
+    local log="$BUILD_DIR/archive.log"
+    if xcodebuild archive "$@" > "$log" 2>&1; then
+        tail -3 "$log" | sed 's/^/  /'
+    else
+        echo "" >&2
+        grep -nE "error:|error :|The following build commands failed|requires a development team|requires a provisioning profile|No signing certificate|invalid entitlement|CodeSign|does not contain" "$log" \
+            | tail -30 | sed 's/^/  /' >&2 || true
+        fail "Archive 构建失败。完整日志: $log"
+    fi
+}
+
 build_archive() {
     info "清理旧产物..."
     rm -rf "$BUILD_DIR"
     mkdir -p "$BUILD_DIR"
 
-    info "构建 Release Archive..."
-    xcodebuild archive \
-        -project "$PROJECT_FILE" \
-        -scheme "$SCHEME" \
-        -destination "platform=macOS" \
-        -configuration Release \
-        -archivePath "$ARCHIVE_PATH" \
-        CODE_SIGN_STYLE=Manual \
-        CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-        DEVELOPMENT_TEAM="$TEAM_ID" \
-        OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp" \
-        2>&1 | tail -5
+    if [[ "$MODE" == "local" ]]; then
+        # 归档阶段完全不签名，理由不是「省事」，而是没得选：
+        # 工程 entitlements 里的 keychain-access-groups 是受限 entitlement，
+        # 值里的 $(AppIdentifierPrefix) 只有描述文件能提供，而描述文件又要有
+        # 团队身份。于是手动签名会直接报 "requires a provisioning profile"。
+        # 关掉签名反而绕过整套签名/描述文件协商——build.yml 的 macOS 那步
+        # 就是这么做的。ad-hoc 签名改在 deep_codesign() 里补。
+        info "构建 Release Archive (暂不签名)..."
+        run_archive \
+            -project "$PROJECT_FILE" \
+            -scheme "$SCHEME" \
+            -destination "platform=macOS" \
+            -configuration Release \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+    else
+        info "构建 Release Archive..."
+        run_archive \
+            -project "$PROJECT_FILE" \
+            -scheme "$SCHEME" \
+            -destination "platform=macOS" \
+            -configuration Release \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp"
+    fi
 
     [[ -d "$ARCHIVE_PATH" ]] || fail "Archive 构建失败，请检查完整日志"
     success "Archive 构建完成: $ARCHIVE_PATH"
@@ -127,6 +199,20 @@ build_archive() {
 
 # ─────────────────────────── 2. 导出 .app ───────────────────────────
 export_app() {
+    # 本地模式没有可用的导出方式：-exportArchive 的每个 method
+    # （developer-id / app-store / ad-hoc）都要求真实签名身份或描述文件。
+    # 而归档里的 .app 在 archive 阶段就已经 ad-hoc 签好了，取出来即可。
+    if [[ "$MODE" == "local" ]]; then
+        info "从归档取出 .app..."
+        local archived_app="$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app"
+        [[ -d "$archived_app" ]] || fail "归档里找不到 .app: $archived_app"
+        rm -rf "$EXPORT_DIR"
+        mkdir -p "$EXPORT_DIR"
+        cp -R "$archived_app" "$APP_PATH"
+        success ".app 就绪: $APP_PATH"
+        return
+    fi
+
     info "导出 .app..."
     mkdir -p "$EXPORT_DIR"
 
@@ -163,6 +249,25 @@ EOF
 
 # ─────────────────────────── 3. 深度重签名 ───────────────────────────
 deep_codesign() {
+    if [[ "$MODE" == "local" ]]; then
+        # 归档时跳过了签名，这里补上 ad-hoc。这一步不能省：
+        # Apple Silicon 的内核要求所有 arm64 可执行文件至少有 ad-hoc 签名，
+        # 完全未签名的二进制一启动就被杀，"归档成功" 不等于 "能运行"。
+        #
+        # 不带 --entitlements。工程那份里唯一起作用的是 keychain-access-groups，
+        # 而它依赖描述文件提供 $(AppIdentifierPrefix)，ad-hoc 无从展开；其余几条
+        # （关沙盒 / 网络 / 用户选择文件）只对沙盒 App 有意义，本地这份本来就不
+        # 沙盒，给不给都一样。代价是钥匙串用不了——App 会自己退回持久 Cookie。
+        # 也不带 --options runtime：Hardened Runtime 是公证的前置条件，
+        # 本地既没有公证也不打算有。
+        info "ad-hoc 签名 .app..."
+        codesign --force --deep --sign - "$APP_PATH" 2>&1 | sed 's/^/  /'
+        codesign --verify "$APP_PATH" >/dev/null 2>&1 \
+            && success "ad-hoc 签名完成并验证通过" \
+            || warn "签名校验未通过，本机启动可能被内核拒绝"
+        return
+    fi
+
     info "深度签名 .app (Hardened Runtime)..."
 
     # 对所有嵌入的框架/dylib 逐一签名 (由内向外)
@@ -240,11 +345,22 @@ APPLESCRIPT
     # 给 DMG 本身签名。此前只签了 .app，外层映像没有签名，
     # Gatekeeper 以 --type open 评估时会以 "no usable signature" 拒绝。
     # 必须在公证之前完成——公证的对象就是最终分发的这个文件。
-    info "为 DMG 签名..."
-    codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$dmg_path"
+    #
+    # 本地模式跳过：这层签名是给公证用的，没有 Developer ID 时
+    # Gatekeeper 照样不认，只是白做一遍。
+    if [[ "$MODE" == "local" ]]; then
+        info "跳过 DMG 签名 (ad-hoc 模式下无意义)"
+    else
+        info "为 DMG 签名..."
+        codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$dmg_path"
+    fi
 
     DMG_PATH="$dmg_path"
-    success "DMG 已创建并签名: $DMG_PATH"
+    if [[ "$MODE" == "local" ]]; then
+        success "DMG 已创建: $DMG_PATH"
+    else
+        success "DMG 已创建并签名: $DMG_PATH"
+    fi
 }
 
 # ─────────────────────────── 5. 公证 DMG ───────────────────────────
@@ -344,10 +460,79 @@ final_verify() {
     echo "${BOLD}═══════════════════════════════════════════════════════════${NC}"
 }
 
+# ──────────────────── 7L. 最终验证（本地模式）────────────────────
+# spctl 在这里必然给出 rejected——没有 Developer ID 就换不来 accepted，
+# 那不是失败，是这种构建方式的性质。所以不查 Gatekeeper，只查
+# 「DMG 挂得上、里面的 app 是有效签名」，再把放行方式讲明白。
+final_verify_local() {
+    info "验证 DMG 可挂载..."
+
+    local attach_out mount_point
+    # 末尾的 || true 是为了让挂载失败也走下面那条自己的报错，
+    # 否则 set -e 会直接带着 hdiutil 的原始输出退出。
+    attach_out=$(hdiutil attach -nobrowse -readonly "$DMG_PATH" || true)
+    # 卷名带空格，不能用 awk 取列；这里从行首贪婪匹配到 /Volumes/ 起点。
+    mount_point=$(echo "$attach_out" | sed -n 's|.*\(/Volumes/.*\)|\1|p' | sed -n '1p')
+
+    if [[ -z "$mount_point" || ! -d "$mount_point" ]]; then
+        fail "DMG 挂载失败: $DMG_PATH"
+    fi
+    ls -1 "$mount_point" | sed 's/^/  /'
+    hdiutil detach "$mount_point" >/dev/null 2>&1 || true
+    success "DMG 可正常挂载"
+
+    # .app 必须带有效签名。Apple Silicon 上完全未签名的 arm64 二进制会被
+    # 内核直接杀掉，所以「DMG 能打开」不等于「app 能运行」，要单独验。
+    if codesign --verify "$APP_PATH" >/dev/null 2>&1; then
+        success ".app 签名有效 (ad-hoc)"
+    else
+        warn ".app 未通过签名校验，本机启动可能被内核拒绝"
+    fi
+
+    local size version
+    size=$(du -sh "$DMG_PATH" | awk '{print $1}')
+    version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "0.1.0")
+
+    echo ""
+    echo "${BOLD}═══════════════════════════════════════════════════════════${NC}"
+    echo "${GREEN}${BOLD}  ✅ 本地构建完成！${NC}"
+    echo "${BOLD}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "  应用名称:   EhViewer-Nya"
+    echo "  版本号:     ${version}"
+    echo "  Bundle ID:  ${BUNDLE_ID}"
+    echo "  文件大小:   ${size}"
+    echo ""
+    echo "  ${BOLD}输出文件:${NC}"
+    echo "  ${CYAN}${DMG_PATH}${NC}"
+    echo ""
+    echo "  签名状态:   ${YELLOW}⚠️  ad-hoc（仅本机可信）${NC}"
+    echo "  公证状态:   ${YELLOW}❌ 未公证（没有付费开发者账号）${NC}"
+    echo ""
+    echo "  ${BOLD}本机安装:${NC} 双击 DMG → 拖入 Applications → 打开"
+    echo "  ${BOLD}首次被拦:${NC} 右键 → 打开 在 macOS 15+ 已不再提供绕过入口，"
+    echo "             改到 系统设置 → 隐私与安全性 → 仍要打开"
+    echo "             或执行: xattr -dr com.apple.quarantine \"/Applications/${APP_NAME}.app\""
+    echo ""
+    echo "  ${BOLD}传给别人:${NC} 对方必定会遇到 Gatekeeper 拦截，需按上面同一步自行放行"
+    echo ""
+    echo "  ${YELLOW}注意${NC} ad-hoc 签名不带 application-identifier，钥匙串可能写入失败"
+    echo "       （errSecMissingEntitlement / -34018）——App 会退回持久 Cookie，"
+    echo "       表现为登录态更容易掉。要避免就换带团队身份的签名。"
+    echo ""
+    echo "${BOLD}═══════════════════════════════════════════════════════════${NC}"
+}
+
 # ─────────────────────────── 主流程 ───────────────────────────
 main() {
+    parse_args "$@"
+
     echo ""
-    echo "${BOLD}🍎 EhViewer-Nya macOS 分发构建${NC}"
+    if [[ "$MODE" == "local" ]]; then
+        echo "${BOLD}🍎 EhViewer-Nya macOS 本地构建 (ad-hoc)${NC}"
+    else
+        echo "${BOLD}🍎 EhViewer-Nya macOS 分发构建${NC}"
+    fi
     echo "${BOLD}════════════════════════════════${NC}"
     echo ""
 
@@ -361,11 +546,16 @@ main() {
     echo ""
     create_dmg
     echo ""
-    notarize_dmg
-    echo ""
-    staple_dmg
-    echo ""
-    final_verify
+
+    if [[ "$MODE" == "local" ]]; then
+        final_verify_local
+    else
+        notarize_dmg
+        echo ""
+        staple_dmg
+        echo ""
+        final_verify
+    fi
 }
 
 main "$@"
