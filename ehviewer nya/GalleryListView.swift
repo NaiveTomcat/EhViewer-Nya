@@ -1445,21 +1445,29 @@ struct GalleryRow: View {
 class GalleryListViewModel {
     /// 列表内容。**写进来的东西会先过一遍过滤器。**
     ///
-    /// 过滤在 didSet 里做，而不是在那 8 处赋值点上分别调一次：
-    /// 分散写就意味着以后新增一条取数路径必然会漏掉，而「漏掉」的表现
-    /// 是屏蔽悄悄失效——用户根本看不出来是哪一页没生效。
-    var galleries: [GalleryInfo] = [] {
-        didSet {
-            // 里面还会再写一次 galleries，靠这个标记挡住重入
-            guard !isApplyingFilters else { return }
-            isApplyingFilters = true
-            defer { isApplyingFilters = false }
-            let hidden = GalleryFilterEngine.shared.apply(to: &galleries)
+    /// 过滤放在 setter 里，而不是 didSet：`append` / 下标赋值走 `_modify`
+    /// 访问器，didSet 会在那次独占访问结束前触发，此时再 `&galleries` 写回就是
+    /// 嵌套写，命中 Swift 独占访问检查并崩溃（EXC_BREAKPOINT）。get/set 让原地
+    /// 修改退化成「取值 → 改副本 → 写回」，过滤只在写回时做一次。
+    ///
+    /// 集中在这里而不是分写在各个赋值点，是为了避免新增取数路径漏掉过滤——
+    /// 「漏掉」的表现是屏蔽悄悄失效，用户看不出来。
+    @ObservationIgnored private var galleriesStorage: [GalleryInfo] = []
+    var galleries: [GalleryInfo] {
+        get {
+            access(keyPath: \.galleries)
+            return galleriesStorage
+        }
+        set {
+            var value = newValue
+            let hidden = GalleryFilterEngine.shared.apply(to: &value)
+            withMutation(keyPath: \.galleries) {
+                galleriesStorage = value
+            }
             filteredOutCount = hidden
         }
     }
 
-    @ObservationIgnored private var isApplyingFilters = false
     /// 最近一次加载被过滤器挡掉的条数，用来在列表底部说明「少了几本」
     var filteredOutCount = 0
     var isLoading = false
