@@ -109,6 +109,14 @@ enum EhSize {
     /// 「继续阅读」条的小封面
     static let resumeThumbnail = CGSize(width: 40, height: 56)
 
+    /// macOS 内容顶部让位的基础高度（不含窗口工具栏）。
+    ///
+    /// 主体栏内容在 `MainTabView.macDetail` 里铺到工具栏下方
+    /// （`ignoresSafeArea(.container, edges: .top)`），列表页与详情页都要让开
+    /// 这段空间。实际让位高度 = 本常量 + `\.ehToolbarTopInset`（窗口工具栏高度）。
+    /// 列表页与详情页共用同一个常量，两栏首行才不会上下错位。
+    static let macTopContentClearance: CGFloat = 54
+
     /// 浮起导航条
     static let tabBarHeight: CGFloat = 58
     static let tabBarRadius: CGFloat = 29

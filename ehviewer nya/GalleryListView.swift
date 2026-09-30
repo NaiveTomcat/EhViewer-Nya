@@ -698,7 +698,7 @@ struct GalleryListView: View {
                         // 顶部空白占位：给浮起的搜索胶囊让位，避免初始遮住第一条。
                         // 再加上工具栏高度——内容现在铺到了工具栏下方。
                         Color.clear
-                            .frame(height: 54 + toolbarTopInset)
+                            .frame(height: EhSize.macTopContentClearance + toolbarTopInset)
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
