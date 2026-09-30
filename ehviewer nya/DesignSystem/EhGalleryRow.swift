@@ -372,11 +372,19 @@ struct EhRowActionButton: View {
 
 #if os(macOS)
 /// 横向标签条：macOS 的 SwiftUI 横向 `ScrollView`（底层是 NSScrollView）会把竖向
-/// scrollWheel 一并吞掉，在标签条上滚时外层列表不跟着动。换用自定义 NSScrollView 承载：
-/// 竖向事件经 `wantsForwardedScrollEvents(for:)` 交还给父级（列表），横向仍归自己。
+/// scrollWheel 一并吞掉，在标签条上滚时外层列表不跟着动。换用自定义 NSScrollView 承载，
+/// 竖向占主导的事件手动转交给外层（列表）的滚动视图，横向才由自己处理。
 private final class HorizontalPassthroughScrollView: NSScrollView {
-    override func wantsForwardedScrollEvents(for axis: NSEvent.GestureAxis) -> Bool {
-        axis == .vertical
+    override func scrollWheel(with event: NSEvent) {
+        if abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) {
+            if let outer = enclosingScrollView {
+                outer.scrollWheel(with: event)
+            } else {
+                nextResponder?.scrollWheel(with: event)
+            }
+        } else {
+            super.scrollWheel(with: event)
+        }
     }
 
     override var intrinsicContentSize: NSSize {
