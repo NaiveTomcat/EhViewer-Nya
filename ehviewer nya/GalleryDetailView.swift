@@ -265,8 +265,7 @@ struct GalleryDetailView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(8)
-                .background(.black.opacity(0.5))
-                .clipShape(Circle())
+                .glassEffect(.regular.tint(Color.black.opacity(0.5)).interactive(), in: .circle)
         }
     }
 
